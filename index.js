@@ -1,5 +1,5 @@
 // ╔═══════════════════════════════════════════════════════════════╗
-// ║  🐉 Hi.มังกร v4.0 — AI Slip Analyzer Edition                 ║
+// ║  Better Day v4.0 — AI Slip Analyzer Edition                 ║
 // ║  LINE Bot + AI สลิปอัตโนมัติ + Dashboard real-time           ║
 // ╚═══════════════════════════════════════════════════════════════╝
 require('dotenv').config();
@@ -34,7 +34,7 @@ const DEFAULT_DB = {
   defaultGroupId: '',
   settings: {
     startBalance: 1000,
-    botName: 'Hi.มังกร',
+    botName: 'Better Day',
     autoReply: true,
     autoTopupSlip: true,
     slipMinAmount: 1,
@@ -550,7 +550,7 @@ app.post('/webhook', async (req, res) => {
       // วิธีแทง
       if (/^(วิธีแทง|วิธีเล่น|คำสั่ง|help|\?)$/i.test(lower)) {
         await replyMsg(replyTk, [txtMsg(
-          `📋 วิธีแทง Hi.มังกร\n\n` +
+          `📋 วิธีแทง Better Day\n\n` +
           `สูง=100  ต่ำ=200\n` +
           `คู่=100  คี่=100\n` +
           `45=100  (คู่ตาย)\n` +
@@ -669,7 +669,7 @@ app.post('/webhook', async (req, res) => {
     if (ev.type === 'join') {
       if (groupId) db.defaultGroupId = groupId;
       addLog(db, 'join', `เข้ากลุ่ม ${groupId||''}`);
-      await replyMsg(replyTk, [txtMsg(`🐉 สวัสดีครับ! Hi.มังกร Bot พร้อมแล้ว\n\nพิมพ์ "วิธีแทง" เพื่อดูคำสั่ง\n💳 ส่งสลิปเพื่อเติมเงินอัตโนมัติ`)]);
+      await replyMsg(replyTk, [txtMsg(`🐉 สวัสดีครับ! Better Day Bot พร้อมแล้ว\n\nพิมพ์ "วิธีแทง" เพื่อดูคำสั่ง\n💳 ส่งสลิปเพื่อเติมเงินอัตโนมัติ`)]);
       await saveDB(db);
     }
 
@@ -883,7 +883,7 @@ async function start() {
   }
 
   app.listen(PORT, () => {
-    console.log(`\n🐉 Hi.มังกร v4.0 — AI Slip Analyzer Edition`);
+    console.log(`\Better Day v4.0 — AI Slip Analyzer Edition`);
     console.log(`📊 Dashboard: http://localhost:${PORT}/?token=${ADMIN_PW}`);
     console.log(`🔗 Webhook:   http://localhost:${PORT}/webhook`);
     console.log(SECRET ? '✅ LINE Secret OK' : '⚠️  LINE_CHANNEL_SECRET ยังไม่ได้ตั้งค่า');
@@ -901,7 +901,7 @@ start();
 const DASHBOARD_HTML = `<!DOCTYPE html>
 <html lang="th"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>🐉 Hi.มังกร v4 — AI Slip Dashboard</title>
+<title>Better Day v4 — AI Slip Dashboard</title>
 <style>
 :root{--bg:#0c0d0b;--bg2:#161714;--bg3:#1e1f1c;--bg4:#272825;--bdr:#2a2b27;--bdr2:#393a36;--txt:#e5e2d8;--muted:#6d6b64;--gold:#c9a84c;--gold2:#e8c96a;--grn:#4a9e6a;--red:#c45252;--blu:#4a7fc0;--pur:#8b6fcc;--cyan:#3aa8a8}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -990,7 +990,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 <div class="shell">
 
 <div class="top">
-  <div class="logo">🐉 Hi.มังกร <span style="font-size:9px;color:var(--cyan);font-weight:400">v4 AI</span></div>
+  <div class="logo">Better Day <span style="font-size:9px;color:var(--cyan);font-weight:400">v4 AI</span></div>
   <span class="tag tg" id="open-tag">● เปิด</span>
   <span class="round-lbl">รอบ <span class="round-num" id="hdr-round">—</span></span>
   <div class="spacer"></div>
@@ -1295,7 +1295,7 @@ PORT=<span style="color:var(--gold)">__PORT__</span>
       </div>
       <div class="setup-box">
         <h3>⚙️ ตั้งค่าทั่วไป</h3>
-        <div class="fr"><label>ชื่อบอท</label><input class="inp" id="s-name" style="width:100%" placeholder="Hi.มังกร"></div>
+        <div class="fr"><label>ชื่อบอท</label><input class="inp" id="s-name" style="width:100%" placeholder="Better Day"></div>
         <div class="fr"><label>เงินเริ่มต้น</label><input class="inp" id="s-balance" type="number" style="width:100%" placeholder="1000"></div>
         <div class="fr"><label>Group ID หลัก</label><input class="inp" id="s-gid" style="width:100%" placeholder="C1234abc..."></div>
         <button class="tbtn gold" onclick="saveSettings()" style="width:100%;padding:8px">💾 บันทึกการตั้งค่า</button>
@@ -1379,7 +1379,7 @@ async function load(){
 
   // slip settings
   if(D.settings){
-    const el=document.getElementById('s-name');if(el)el.value=D.settings.botName||'Hi.มังกร';
+    const el=document.getElementById('s-name');if(el)el.value=D.settings.botName||'Better Day';
     const eb=document.getElementById('s-balance');if(eb)eb.value=D.settings.startBalance||1000;
     const eg=document.getElementById('s-gid');if(eg)eg.value=D.defaultGroupId||'';
     const sa=document.getElementById('sl-auto');if(sa)sa.value=D.settings.autoTopupSlip?'1':'0';
