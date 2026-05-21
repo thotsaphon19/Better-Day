@@ -434,7 +434,7 @@ app.post('/webhook', async (req, res) => {
           if (db.settings.autoReply) {
             await pushMsg(srcId, [txtMsg(`❌ ไม่พบข้อมูลสลิปในรูปภาพ\nกรุณาส่งรูปสลิปชัดๆ`)]);
           }
-          await await saveDB(db); continue;
+          await saveDB(db); continue;
         }
 
         // ตรวจสลิปซ้ำ (refNo ซ้ำ)
@@ -447,7 +447,7 @@ app.post('/webhook', async (req, res) => {
             if (db.settings.autoReply) {
               await pushMsg(srcId, [txtMsg(`⚠️ สลิปนี้ถูกใช้แล้ว (Ref: ${ai.refNo})\nกรุณาตรวจสอบ`)]);
             }
-            await await saveDB(db); continue;
+            await saveDB(db); continue;
           }
         }
 
@@ -460,7 +460,7 @@ app.post('/webhook', async (req, res) => {
           if (db.settings.autoReply) {
             await pushMsg(srcId, [txtMsg(`❌ ยอดโอน ${ai.amount.toLocaleString()} ต่ำกว่าขั้นต่ำ (${minAmt.toLocaleString()} บาท)`)]);
           }
-          await await saveDB(db); continue;
+          await saveDB(db); continue;
         }
 
         // จับคู่ผู้เล่น
@@ -521,7 +521,7 @@ app.post('/webhook', async (req, res) => {
           await pushMsg(srcId, [txtMsg(`❌ วิเคราะห์สลิปไม่สำเร็จ กรุณาแจ้งแอดมิน`)]);
         }
       }
-      await await saveDB(db); continue;
+      await saveDB(db); continue;
     }
 
     // ── TEXT MESSAGE ──────────────────────────────────────────
@@ -535,7 +535,7 @@ app.post('/webhook', async (req, res) => {
         await replyMsg(replyTk, [txtMsg(
           `💰 ${name}\nID : ${player.memberId}\nเงินคงเหลือ = ${player.balance.toLocaleString()} 💰💰`
         )]);
-        await await saveDB(db); continue;
+        await saveDB(db); continue;
       }
 
       // อันดับ
@@ -544,7 +544,7 @@ app.post('/webhook', async (req, res) => {
         const medals = ['🥇','🥈','🥉'];
         const lines  = sorted.map((p,i) => `${medals[i]||`${i+1}.`} ${p.name} — ${p.balance.toLocaleString()}`);
         await replyMsg(replyTk, [txtMsg('🏆 อันดับเงิน\n' + lines.join('\n'))]);
-        await await saveDB(db); continue;
+        await saveDB(db); continue;
       }
 
       // วิธีแทง
@@ -563,7 +563,7 @@ app.post('/webhook', async (req, res) => {
           `อันดับ (ดู Top 10)\n\n` +
           `💳 ส่งสลิปโอนเงินเพื่อเติมเงินอัตโนมัติ`
         )]);
-        await await saveDB(db); continue;
+        await saveDB(db); continue;
       }
 
       // เปิดรอบ
@@ -576,7 +576,7 @@ app.post('/webhook', async (req, res) => {
         await replyMsg(replyTk, [txtMsg(msg)]);
         if (srcId !== uid) await pushMsg(srcId, [txtMsg(msg)]);
         addLog(db, 'open', `เปิดที่ ${db.currentRound}`);
-        await await saveDB(db); continue;
+        await saveDB(db); continue;
       }
 
       // ปิดรับแทง
@@ -586,7 +586,7 @@ app.post('/webhook', async (req, res) => {
         const msg = `🔴 ปิดรับแทงแล้ว\nมีรายการแทง ${bc} รายการ รอผล...`;
         await replyMsg(replyTk, [txtMsg(msg)]);
         addLog(db, 'close', `ปิดรับแทงรอบ ${db.currentRound} มี ${bc} รายการ`);
-        await await saveDB(db); continue;
+        await saveDB(db); continue;
       }
 
       // สุ่มลูกเต๋า
@@ -594,7 +594,7 @@ app.post('/webhook', async (req, res) => {
         db.isOpen = false;
         const d1=Math.ceil(Math.random()*6), d2=Math.ceil(Math.random()*6), d3=Math.ceil(Math.random()*6);
         await doResult(db, d1,d2,d3, groupId, replyTk);
-        await await saveDB(db); continue;
+        await saveDB(db); continue;
       }
 
       // ตั้งผลเอง
@@ -603,7 +603,7 @@ app.post('/webhook', async (req, res) => {
         db.isOpen = false;
         const [,d1,d2,d3] = manM.map(Number);
         await doResult(db, d1,d2,d3, groupId, replyTk);
-        await await saveDB(db); continue;
+        await saveDB(db); continue;
       }
 
       // เติมเงิน
@@ -619,7 +619,7 @@ app.post('/webhook', async (req, res) => {
         } else {
           await replyMsg(replyTk, [txtMsg(`❌ ไม่พบ: ${q}`)]);
         }
-        await await saveDB(db); continue;
+        await saveDB(db); continue;
       }
 
       // ถอนเงิน
@@ -635,7 +635,7 @@ app.post('/webhook', async (req, res) => {
         } else {
           await replyMsg(replyTk, [txtMsg(`❌ ไม่พบ: ${q}`)]);
         }
-        await await saveDB(db); continue;
+        await saveDB(db); continue;
       }
 
       // คำสั่งเดิมพัน
@@ -643,7 +643,7 @@ app.post('/webhook', async (req, res) => {
       if (regular.length > 0 || extra.length > 0) {
         if (!db.isOpen) {
           await replyMsg(replyTk, [txtMsg(`🔴 ปิดรับแทงแล้ว รอรอบถัดไป`)]);
-          await await saveDB(db); continue;
+          await saveDB(db); continue;
         }
         const allItems = [...regular, ...extra];
         const total    = allItems.reduce((s,b)=>s+b.amt, 0);
@@ -661,7 +661,7 @@ app.post('/webhook', async (req, res) => {
         if (regular.length > 0) replies.push(txtMsg(betReply(name, regular, player.balance)));
         if (extra.length   > 0) replies.push(txtMsg(extraReply(name, extra, player.balance)));
         if (replies.length > 0) await replyMsg(replyTk, replies);
-        await await saveDB(db); continue;
+        await saveDB(db); continue;
       }
     }
 
@@ -697,7 +697,7 @@ function auth(req, res, next) {
   next();
 }
 
-app.get('/api/data', auth, (req, res) => {
+app.get('/api/data', auth, async (req, res) => {
   const db = await readDB();
   const players = Object.values(db.players);
   res.json({
@@ -853,7 +853,7 @@ app.post('/api/settings', auth, async (req, res) => {
   res.json({ ok:true });
 });
 
-app.post('/api/reset', auth, (req, res) => {
+app.post('/api/reset', auth, async (req, res) => {
   const { what } = req.body;
   const db = await readDB();
   if (!what || what==='all')     { Object.assign(db, { players:{}, bets:[], rounds:[], deposits:[], logs:[], slips:[], currentRound:155, isOpen:false }); }
