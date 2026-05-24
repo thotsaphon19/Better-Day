@@ -1,10 +1,10 @@
 {
-  "name": "better-day-bot",
-  "version": "5.0.0",
-  "description": "Better Day LINE Bot + MongoDB",
+  "name": "hi-mangkorn-complete",
+  "version": "4.0.0",
+  "description": "🐉 Hi.มังกร — LINE Bot + Dashboard บริหารจัดการ ครบวงจร",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node migrate.js && node index.js",
     "dev": "nodemon index.js"
   },
   "dependencies": {
@@ -13,6 +13,9 @@
     "mongodb": "^6.21.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0"
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=16"
   }
 }
