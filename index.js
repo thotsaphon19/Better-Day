@@ -865,6 +865,40 @@ app.post('/api/reset', auth, async (req, res) => {
   res.json({ ok:true });
 });
 
+// ─── ONE-TIME MIGRATE ENDPOINT ────────────────────────────────
+app.get('/api/migrate-now', async (req, res) => {
+  if (req.query.secret !== ADMIN_PW) return res.json({ ok:false, error:'unauthorized' });
+  try {
+    const col = await getMongoCol();
+    if (!col) return res.json({ ok:false, error:'no mongo connection' });
+    const existing = await col.findOne({ _id:'main' });
+    if (existing) {
+      const pc = Object.keys(existing.players||{}).length;
+      return res.json({ ok:false, error:'already has data', players:pc, msg:'ใช้ ?secret=...&force=1 เพื่อเขียนทับ' });
+    }
+    const data = {
+      players: {
+        "U82c1b8adbabae391191463bf8abe8079": { name:"Better day", uid:"U82c1b8adbabae391191463bf8abe8079", memberId:1, balance:1045, totalBet:100, totalWin:0, totalLoss:0, joinedAt:"2026-05-14T21:39:03.739Z", groupId:null },
+        "U0cb18ec39221c558553fda295a9ecd25": { name:"Thotsaporn (TECH-TJ)", uid:"U0cb18ec39221c558553fda295a9ecd25", memberId:2, balance:1090, totalBet:0, totalWin:0, totalLoss:0, joinedAt:"2026-05-14T21:47:53.456Z", groupId:null }
+      },
+      bets: [],
+      rounds: [{ round:155, d1:2, d2:1, d3:1, sum:4, label:"ต่ำ", ts:"2026-05-14T20:04:29.247Z", settled:0 }],
+      deposits: [],
+      logs: [],
+      slips: [],
+      currentRound: 156,
+      isOpen: true,
+      defaultGroupId: "C5ca1986a9deb25e4bcc5d6d9bc6bc5b0",
+      settings: { startBalance:1000, botName:"Hi.มังกร", autoReply:true, autoTopupSlip:true, slipMinAmount:1 }
+    };
+    await col.replaceOne({ _id:'main' }, { _id:'main', ...data }, { upsert:true });
+    console.log('✅ migrate-now สำเร็จ players:', Object.keys(data.players).length);
+    res.json({ ok:true, players:Object.keys(data.players).length, msg:'Migration สำเร็จ! รีเฟรชหน้า Dashboard ได้เลย' });
+  } catch(e) {
+    res.json({ ok:false, error:e.message });
+  }
+});
+
 app.get('/health', (_, res) => res.json({ ok:true, ts:new Date().toISOString(), port:PORT, aiEnabled: !!ANTHROPIC_KEY }));
 app.get('/', (req, res) => res.send(DASHBOARD_HTML.replace(/__TOKEN__/g, req.query.token||'').replace(/__PORT__/g, PORT).replace(/__ADMIN_PW__/g, ADMIN_PW)));
 
@@ -1722,4 +1756,3 @@ function toast(msg,t){
 load();
 setInterval(load,8000);
 </script></body></html>`;
-
