@@ -14,12 +14,12 @@ const { MongoClient } = require('mongodb');
 const app = express();
 
 // ─── ENV ──────────────────────────────────────────────────────
-let   SECRET        = process.env.LINE_CHANNEL_SECRET       || '';
-let   TOKEN         = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
+const SECRET        = process.env.LINE_CHANNEL_SECRET       || '';
+const TOKEN         = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
 const ADMIN_PW      = process.env.ADMIN_PASSWORD            || 'admin1234';
 const PORT          = process.env.PORT                      || 3000;
-let   ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY         || '';
-let   MONGO_URI     = process.env.MONGODB_URI               || '';
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY         || '';
+const MONGO_URI     = process.env.MONGODB_URI               || '';
 
 // ─── DB (MongoDB) ─────────────────────────────────────────────
 const DEFAULT_DB = {
@@ -41,28 +41,13 @@ const DEFAULT_DB = {
   }
 };
 
-// โหลด credentials จาก DB → อัปเดต runtime vars
-async function loadCredentialsFromDB() {
-  try {
-    const col = await getMongoCol();
-    if (!col) return;
-    const doc = await col.findOne({ _id: 'main' });
-    const creds = doc?.settings?.credentials || {};
-    if (creds.lineSecret)   SECRET        = creds.lineSecret;
-    if (creds.lineToken)    TOKEN         = creds.lineToken;
-    if (creds.anthropicKey) ANTHROPIC_KEY = creds.anthropicKey;
-    console.log('🔑 โหลด credentials สำเร็จ: secret=%s token=%s ai=%s',
-      !!SECRET, !!TOKEN, !!ANTHROPIC_KEY);
-  } catch(e) { console.warn('loadCreds warn:', e.message); }
-}
-
 let _mongoClient = null;
 let _db = null;
 
 async function getMongoCol() {
   if (!MONGO_URI) return null;
   if (!_mongoClient) {
-    _mongoClient = new MongoClient(MONGO_URI, { serverSelectionTimeoutMS: 8000 });
+    _mongoClient = new MongoClient(MONGO_URI);
     await _mongoClient.connect();
     _db = _mongoClient.db('himangkorn');
   }
@@ -158,30 +143,19 @@ function settleRound(db, round, d1, d2, d3) {
   const results = [];
   const pending = db.bets.filter(b => b.round === round && b.status === 'pending');
   for (const bet of pending) {
-    let totalProfit = 0;
+    let net = 0;
     for (const b of bet.items) {
-      const profit = calcBet(b.type, b.amt, d1, d2, d3);
-      // calcBet คืน +amt (ชนะ, กำไร) หรือ -amt (แพ้)
-      // ทุนถูกหักตอนแทงแล้ว → ชนะ = คืนทุน + กำไร, แพ้ = ไม่ต้องทำ
-      b.net    = profit;
-      b.result = profit > 0 ? 'ชนะ' : 'แพ้';
-      totalProfit += profit;
+      b.net = calcBet(b.type, b.amt, d1, d2, d3);
+      b.result = b.net >= 0 ? 'ชนะ' : 'แพ้';
+      net += b.net;
     }
-    bet.net    = totalProfit;
-    bet.status = 'settled';
+    bet.net = net; bet.status = 'settled';
     const p = db.players[bet.uid];
     if (p) {
-      if (totalProfit > 0) {
-        // ชนะ: คืนทุน (bet.total) + กำไร (totalProfit)
-        p.balance  += bet.total + totalProfit;
-        p.totalWin += totalProfit;
-      } else {
-        // แพ้: ทุนหักไปแล้ว — บันทึก totalLoss เท่านั้น
-        p.totalLoss += bet.total;
-      }
+      p.balance += net;
+      if (net > 0) p.totalWin += net; else p.totalLoss += Math.abs(net);
     }
-    results.push({ uid:bet.uid, name:bet.name, memberId:bet.memberId,
-      net:totalProfit, balance:db.players[bet.uid]?.balance||0 });
+    results.push({ uid:bet.uid, name:bet.name, memberId:bet.memberId, net, balance:db.players[bet.uid]?.balance||0 });
   }
   return results;
 }
@@ -517,15 +491,13 @@ app.post('/webhook', async (req, res) => {
           slipRecord.topupDone = true;
           addLog(db, 'slip', `✅ สลิป ${ai.amount} บาท → ${matchedPlayer.name} (รวม ${matchedPlayer.balance})`, uid);
 
-          const balBefore = matchedPlayer.balance - ai.amount;
           const replyText =
             `✅ รับสลิปสำเร็จ!\n` +
             `👤 ${matchedPlayer.name}\n` +
-            `💰 เติมเงิน: +${ai.amount.toLocaleString()} บาท\n` +
+            `💰 ยอดโอน: ${ai.amount.toLocaleString()} บาท\n` +
             `🏦 จาก: ${ai.bankFrom || '—'}\n` +
             (ai.refNo ? `📋 Ref: ${ai.refNo}\n` : '') +
-            `\n💳 ก่อนเติม  = ${balBefore.toLocaleString()}\n` +
-            `💰 หลังเติม  = ${matchedPlayer.balance.toLocaleString()} บาท`;
+            `\n💳 เงินคงเหลือ = ${matchedPlayer.balance.toLocaleString()} 💰💰`;
 
           await pushMsg(srcId, [txtMsg(replyText)]);
         } else {
@@ -676,26 +648,13 @@ app.post('/webhook', async (req, res) => {
         const allItems = [...regular, ...extra];
         const total    = allItems.reduce((s,b)=>s+b.amt, 0);
 
-        // ตรวจเงินพอ
-        if (player.balance < total) {
-          await replyMsg(replyTk, [txtMsg(
-            `❌ เงินไม่พอ!\n` +
-            `ต้องการ ${total.toLocaleString()} บาท\n` +
-            `เงินคงเหลือ ${player.balance.toLocaleString()} บาท\n\n` +
-            `💳 ส่งสลิปเติมเงินก่อนแทง`
-          )]);
-          await saveDB(db); continue;
-        }
-        // หักเงินทันที
-        player.balance  -= total;
-        player.totalBet += total;
-
         db.bets.unshift({
           id:`${Date.now()}`, uid, name, memberId:player.memberId,
           round:db.currentRound, items:allItems, total,
           status:'pending', ts:new Date().toISOString(), groupId,
         });
         if (db.bets.length > 50000) db.bets.length = 50000;
+        player.totalBet += total;
         addLog(db, 'bet', `${name} แทง ${allItems.length} รายการ รวม ${total} รอบ ${db.currentRound}`, uid);
 
         const replies = [];
@@ -720,7 +679,7 @@ app.post('/webhook', async (req, res) => {
       if (!db.players[uid]) {
         const cnt = Object.keys(db.players).length + 1;
         db.players[uid] = { name:prof?.displayName||`สมาชิก${cnt}`, uid, memberId:cnt,
-          balance:db.settings?.startBalance||1000, totalBet:0, totalWin:0, totalLoss:0, joinedAt:new Date().toISOString() };
+          balance: 0, totalBet:0, totalWin:0, totalLoss:0, joinedAt:new Date().toISOString() };
       }
       await replyMsg(replyTk, [txtMsg(`🐉 ยินดีต้อนรับ ${db.players[uid].name}!\nID : ${db.players[uid].memberId}\nเงินคงเหลือ = ${db.players[uid].balance.toLocaleString()} 💰💰\n\nพิมพ์ "วิธีแทง" เพื่อดูคำสั่ง\n💳 ส่งสลิปเพื่อเติมเงินอัตโนมัติ`)]);
       addLog(db, 'follow', `${db.players[uid].name} add บอท`);
@@ -894,73 +853,14 @@ app.post('/api/settings', auth, async (req, res) => {
   res.json({ ok:true });
 });
 
-// ─── API: LINE OA + AI Credentials ───────────────────────────
-app.post('/api/credentials', auth, async (req, res) => {
-  const { lineSecret, lineToken, anthropicKey, testConnection } = req.body;
+// Reset botName+startBalance ใน DB โดยตรง (แก้ค่าเก่าที่ค้างใน MongoDB)
+app.post('/api/fix-settings', auth, async (req, res) => {
   const db = await readDB();
-  if (!db.settings.credentials) db.settings.credentials = {};
-  if (lineSecret)   { db.settings.credentials.lineSecret   = lineSecret;   SECRET        = lineSecret;   }
-  if (lineToken)    { db.settings.credentials.lineToken     = lineToken;     TOKEN         = lineToken;     }
-  if (anthropicKey) { db.settings.credentials.anthropicKey = anthropicKey; ANTHROPIC_KEY = anthropicKey; }
+  if (!db.settings) db.settings = {};
+  db.settings.botName      = req.body.botName      ?? db.settings.botName      ?? 'Better Day';
+  db.settings.startBalance = req.body.startBalance ?? db.settings.startBalance ?? 0;
   await saveDB(db);
-  if (testConnection && TOKEN) {
-    try {
-      const info = await new Promise((resolve, reject) => {
-        const r = https.request({ hostname:'api.line.me', path:'/v2/bot/info', method:'GET',
-          headers:{ Authorization:`Bearer ${TOKEN}` }
-        }, resp => { let b=''; resp.on('data',c=>b+=c); resp.on('end',()=>{ try{resolve(JSON.parse(b));}catch{resolve({});} }); });
-        r.on('error', reject); r.end();
-      });
-      return res.json({ ok:true, saved:true, botInfo:info });
-    } catch(e) { return res.json({ ok:true, saved:true, testError:e.message }); }
-  }
-  res.json({ ok:true, saved:true });
-});
-
-app.get('/api/credentials', auth, async (req, res) => {
-  const db = await readDB();
-  const c = db.settings?.credentials || {};
-  const mask = v => v ? v.slice(0,4)+'••••••'+v.slice(-4) : '';
-  res.json({ ok:true,
-    lineSecret:   { set:!!c.lineSecret,   preview:mask(c.lineSecret)   },
-    lineToken:    { set:!!c.lineToken,     preview:mask(c.lineToken)     },
-    anthropicKey: { set:!!c.anthropicKey,  preview:mask(c.anthropicKey)  },
-    runtimeActive:{ secret:!!SECRET, token:!!TOKEN, ai:!!ANTHROPIC_KEY },
-  });
-});
-
-// ─── API: MongoDB URI ──────────────────────────────────────────
-app.post('/api/mongo-uri', auth, async (req, res) => {
-  const { mongoUri } = req.body;
-  if (!mongoUri) return res.json({ ok:false, error:'no uri' });
-  try {
-    const testClient = new MongoClient(mongoUri, { serverSelectionTimeoutMS:8000 });
-    await testClient.connect(); await testClient.db('admin').command({ ping:1 }); await testClient.close();
-    if (_mongoClient) { try { await _mongoClient.close(); } catch {} }
-    _mongoClient = null; _db = null;
-    MONGO_URI = mongoUri;
-    await getMongoCol();
-    const db = await readDB();
-    if (!db.settings.credentials) db.settings.credentials = {};
-    db.settings.credentials.mongoUri = mongoUri;
-    await saveDB(db);
-    console.log('✅ MongoDB URI อัปเดตแล้ว:', _db?.databaseName);
-    res.json({ ok:true, connected:true, dbName:_db?.databaseName||'himangkorn' });
-  } catch(e) { res.json({ ok:false, error:e.message }); }
-});
-
-// ─── API: Bot Info ─────────────────────────────────────────────
-app.get('/api/bot-info', auth, async (req, res) => {
-  if (!TOKEN) return res.json({ ok:false, error:'no token' });
-  try {
-    const info = await new Promise((resolve, reject) => {
-      const r = https.request({ hostname:'api.line.me', path:'/v2/bot/info', method:'GET',
-        headers:{ Authorization:`Bearer ${TOKEN}` }
-      }, resp => { let b=''; resp.on('data',c=>b+=c); resp.on('end',()=>{ try{resolve(JSON.parse(b));}catch{resolve({});} }); });
-      r.on('error', reject); r.end();
-    });
-    res.json({ ok:true, info });
-  } catch(e) { res.json({ ok:false, error:e.message }); }
+  res.json({ ok:true, botName: db.settings.botName, startBalance: db.settings.startBalance });
 });
 
 app.post('/api/reset', auth, async (req, res) => {
@@ -975,7 +875,7 @@ app.post('/api/reset', auth, async (req, res) => {
   res.json({ ok:true });
 });
 
-app.get('/health', (_, res) => res.json({ ok:true, ts:new Date().toISOString(), port:PORT, aiEnabled:!!ANTHROPIC_KEY, lineOk:!!TOKEN&&!!SECRET, mongoConnected:!!(_mongoClient&&_db) }));
+app.get('/health', (_, res) => res.json({ ok:true, ts:new Date().toISOString(), port:PORT, aiEnabled: !!ANTHROPIC_KEY }));
 app.get('/', (req, res) => res.send(DASHBOARD_HTML.replace(/__TOKEN__/g, req.query.token||'').replace(/__PORT__/g, PORT).replace(/__ADMIN_PW__/g, ADMIN_PW)));
 
 // ─── START ────────────────────────────────────────────────────
@@ -984,7 +884,6 @@ async function start() {
     try {
       await getMongoCol();
       console.log('✅ MongoDB เชื่อมต่อสำเร็จ');
-      await loadCredentialsFromDB();
     } catch (e) {
       console.error('❌ MongoDB เชื่อมต่อล้มเหลว:', e.message);
       console.log('⚠️  ใช้ไฟล์ db.json แทน');
@@ -1391,91 +1290,28 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 <div id="p-setup" class="page">
   <div class="g2">
     <div>
-
       <div class="setup-box">
-        <h3>🟢 เชื่อมต่อ LINE Official Account + AI</h3>
-        <p style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.7">กรอกจาก LINE Developers Console แล้วกด "บันทึก+ทดสอบ" — เชื่อมต่อทันทีไม่ต้อง restart</p>
-        <div id="cred-status" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding:10px;background:var(--bg3);border-radius:7px;font-size:11px">
-          <span id="cs-secret">🔴 Secret: —</span>
-          <span style="color:var(--bdr2)">|</span>
-          <span id="cs-token">🔴 Token: —</span>
-          <span style="color:var(--bdr2)">|</span>
-          <span id="cs-ai">🔴 AI: —</span>
-        </div>
-        <div class="fr">
-          <label>🔐 Channel Secret <span style="font-size:10px;color:var(--muted)">(LINE Developers → Basic settings)</span></label>
-          <div style="position:relative">
-            <input class="inp" id="c-secret" type="password" style="width:100%;padding-right:64px" placeholder="32 ตัวอักษร...">
-            <button onclick="togglePw('c-secret')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px">แสดง</button>
-          </div>
-        </div>
-        <div class="fr">
-          <label>🎫 Channel Access Token <span style="font-size:10px;color:var(--muted)">(LINE Developers → Messaging API)</span></label>
-          <div style="position:relative">
-            <input class="inp" id="c-token" type="password" style="width:100%;padding-right:64px" placeholder="eyJhbGci...">
-            <button onclick="togglePw('c-token')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px">แสดง</button>
-          </div>
-        </div>
-        <div class="fr">
-          <label>🤖 Anthropic API Key <span style="font-size:10px;color:var(--muted)">(console.anthropic.com → API Keys)</span></label>
-          <div style="position:relative">
-            <input class="inp" id="c-ai" type="password" style="width:100%;padding-right:64px" placeholder="sk-ant-api03-...">
-            <button onclick="togglePw('c-ai')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px">แสดง</button>
-          </div>
-        </div>
-        <div style="display:flex;gap:7px">
-          <button class="tbtn gold" onclick="saveCreds(true)" style="flex:2;padding:9px">💾 บันทึก + ทดสอบ LINE</button>
-          <button class="tbtn" onclick="saveCreds(false)" style="flex:1;padding:9px">บันทึก</button>
-        </div>
-        <div id="cred-result" style="margin-top:10px;font-size:11px;display:none"></div>
+        <h3>🔑 LINE API Credentials</h3>
+        <div class="code-block">LINE_CHANNEL_SECRET=<span style="color:var(--gold)">ค่าจาก LINE Console</span>
+LINE_CHANNEL_ACCESS_TOKEN=<span style="color:var(--gold)">ค่าจาก LINE Console</span>
+ANTHROPIC_API_KEY=<span style="color:var(--cyan)">sk-ant-...</span>
+ADMIN_PASSWORD=<span style="color:var(--gold)">__ADMIN_PW__</span>
+PORT=<span style="color:var(--gold)">__PORT__</span>
+<button class="cbtn" onclick="cpCode(this)">copy</button></div>
       </div>
-
-      <div class="setup-box">
-        <h3>🍃 MongoDB URI</h3>
-        <div id="mongo-status" style="padding:8px 10px;background:var(--bg3);border-radius:6px;font-size:11px;color:var(--muted);margin-bottom:10px">กำลังตรวจสอบ...</div>
-        <div class="fr">
-          <label>🔗 MongoDB URI <span style="font-size:10px;color:var(--muted)">(MongoDB Atlas → Connect → Drivers)</span></label>
-          <div style="position:relative">
-            <input class="inp" id="c-mongo" type="password" style="width:100%;padding-right:64px" placeholder="mongodb+srv://user:pass@cluster...">
-            <button onclick="togglePw('c-mongo')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px">แสดง</button>
-          </div>
-        </div>
-        <button class="tbtn gold" onclick="saveMongo()" style="width:100%;padding:9px">🍃 บันทึก + ทดสอบ MongoDB</button>
-        <div id="mongo-result" style="margin-top:10px;font-size:11px;display:none"></div>
-      </div>
-
       <div class="setup-box">
         <h3>🌐 Webhook URL</h3>
-        <div class="code-block"><span id="wh-url-text">โหลด...</span><button class="cbtn" onclick="cpWh()">copy</button></div>
-        <p style="font-size:10px;color:var(--muted);margin-top:6px">LINE Developers → Messaging API → Webhook URL → Verify ✅</p>
+        <div class="code-block" id="wh-url">http://localhost:__PORT__/webhook<button class="cbtn" onclick="cpWh()">copy</button></div>
       </div>
-
       <div class="setup-box">
         <h3>⚙️ ตั้งค่าทั่วไป</h3>
         <div class="fr"><label>ชื่อบอท</label><input class="inp" id="s-name" style="width:100%" placeholder="Better Day"></div>
-        <div class="fr"><label>เงินเริ่มต้น (บาท)</label><input class="inp" id="s-balance" type="number" style="width:100%" placeholder="0"></div>
+        <div class="fr"><label>เงินเริ่มต้น</label><input class="inp" id="s-balance" type="number" style="width:100%" placeholder="1000"></div>
         <div class="fr"><label>Group ID หลัก</label><input class="inp" id="s-gid" style="width:100%" placeholder="C1234abc..."></div>
         <button class="tbtn gold" onclick="saveSettings()" style="width:100%;padding:8px">💾 บันทึกการตั้งค่า</button>
       </div>
-
     </div>
     <div>
-      <div class="setup-box">
-        <h3>📋 ขั้นตอนเชื่อมต่อ LINE OA</h3>
-        <div style="font-size:11px;color:var(--muted);line-height:2.1">
-          <b style="color:var(--gold)">1.</b> ไป <a href="https://developers.line.biz" target="_blank" style="color:var(--cyan)">developers.line.biz</a><br>
-          <b style="color:var(--gold)">2.</b> Create Provider → Messaging API channel<br>
-          <b style="color:var(--gold)">3.</b> คัดลอก <b style="color:var(--txt)">Channel Secret</b> (Basic settings)<br>
-          <b style="color:var(--gold)">4.</b> Issue <b style="color:var(--txt)">Channel Access Token</b> (Messaging API)<br>
-          <b style="color:var(--gold)">5.</b> ไป <a href="https://console.anthropic.com" target="_blank" style="color:var(--cyan)">console.anthropic.com</a> คัดลอก API Key<br>
-          <b style="color:var(--gold)">6.</b> กรอกทั้ง 3 ช่อง → บันทึก+ทดสอบ<br>
-          <b style="color:var(--gold)">7.</b> คัดลอก Webhook URL → วางใน LINE Console → Verify ✅
-        </div>
-        <div style="margin-top:12px;padding:10px;background:var(--bg3);border-radius:7px">
-          <div style="font-size:10px;color:var(--gold);margin-bottom:5px">⚡ สถานะบอทปัจจุบัน</div>
-          <div id="bot-info" style="font-size:11px;color:var(--muted)">กำลังตรวจสอบ...</div>
-        </div>
-      </div>
       <div class="setup-box">
         <h3>♻️ จัดการข้อมูล</h3>
         <div style="display:flex;flex-direction:column;gap:7px">
@@ -1554,7 +1390,7 @@ async function load(){
   // slip settings
   if(D.settings){
     const el=document.getElementById('s-name');if(el)el.value=D.settings.botName||'Better Day';
-    const eb=document.getElementById('s-balance');if(eb)eb.value=D.settings.startBalance||1000;
+    const eb=document.getElementById('s-balance');if(eb)eb.value=D.settings.startBalance||0;
     const eg=document.getElementById('s-gid');if(eg)eg.value=D.defaultGroupId||'';
     const sa=document.getElementById('sl-auto');if(sa)sa.value=D.settings.autoTopupSlip?'1':'0';
     const sm=document.getElementById('sl-min');if(sm)sm.value=D.settings.slipMinAmount||1;
@@ -1652,7 +1488,7 @@ function slipCardHtml(sl, compact=false){
       \${sl.matchedPlayer?'🎯 ผู้เล่น: <b style="color:var(--cyan)">'+sl.matchedPlayer.name+'</b><br>':''}
       <span style="color:\${statusColor[sl.status]||'var(--muted)'}">⚡ \${statusMap[sl.status]||sl.status}</span>
       · <span style="color:var(--muted)">\${fmt(sl.ts)}</span>
-      \${ai.confidence?'· <span class="ai-badge">'+ai.confidence+'</span>':''}
+      \${ai.confidence?'· <span class="ai-badge">\${ai.confidence}</span>':''}
     </div>
     \${actions}
   </div>\`;
@@ -1866,107 +1702,13 @@ async function saveSettings(){
   if(r.ok){toast('✅ บันทึกการตั้งค่าแล้ว');load();}else toast('❌ เกิดข้อผิดพลาด','e');
 }
 
-function togglePw(id){const el=document.getElementById(id);el.type=el.type==='password'?'text':'password';}
-
-async function loadCredStatus(){
-  // set webhook URL
-  const wh=document.getElementById('wh-url-text');
-  if(wh) wh.textContent=window.location.origin+'/webhook';
-  try{
-    const d=await api('/api/credentials');
-    if(!d.ok)return;
-    const se=id=>document.getElementById(id);
-    se('cs-secret').innerHTML=d.lineSecret.set
-      ?\`🟢 Secret: <span style="color:var(--gold)">\${d.lineSecret.preview}</span>\`:'🔴 Secret: —';
-    se('cs-token').innerHTML=d.lineToken.set
-      ?\`🟢 Token: <span style="color:var(--gold)">\${d.lineToken.preview}</span>\`:'🔴 Token: —';
-    se('cs-ai').innerHTML=d.anthropicKey.set
-      ?\`🟢 AI: <span style="color:var(--cyan)">\${d.anthropicKey.preview}</span>\`:'🔴 AI: —';
-    const bi=document.getElementById('bot-info');if(!bi)return;
-    if(d.runtimeActive?.token){
-      try{
-        const bd=await api('/api/bot-info');
-        if(bd.ok&&bd.info) bi.innerHTML=\`<b style="color:var(--grn)">\${bd.info.displayName||'—'}</b> <span style="color:var(--muted);font-size:10px">· \${bd.info.userId||''}</span>\`;
-        else bi.textContent='Token ยังไม่ถูกต้อง';
-      }catch{bi.textContent='ตรวจสอบไม่ได้';}
-    } else { bi.textContent='ยังไม่ได้ใส่ Token'; }
-  }catch(e){console.warn('loadCredStatus:',e);}
-}
-
-async function saveCreds(test=false){
-  const secret=document.getElementById('c-secret').value.trim();
-  const token=document.getElementById('c-token').value.trim();
-  const ai=document.getElementById('c-ai').value.trim();
-  if(!secret&&!token&&!ai){toast('❌ กรุณากรอกอย่างน้อย 1 ช่อง','e');return;}
-  const el=document.getElementById('cred-result');
-  el.style.display='block';el.style.color='var(--muted)';
-  el.textContent=test?'⏳ กำลังบันทึก + ทดสอบการเชื่อมต่อ...':'⏳ กำลังบันทึก...';
-  const body={};
-  if(secret)body.lineSecret=secret;
-  if(token)body.lineToken=token;
-  if(ai)body.anthropicKey=ai;
-  if(test)body.testConnection=true;
-  const r=await api('/api/credentials',body);
-  if(r.ok){
-    if(r.botInfo){
-      const n=r.botInfo.displayName||r.botInfo.basicId||'LINE Bot';
-      el.style.color='var(--grn)';
-      el.innerHTML=\`✅ เชื่อมต่อสำเร็จ! บอท: <b>\${n}</b>\`;
-      toast('✅ เชื่อมต่อ LINE OA สำเร็จ: '+n);
-    }else if(r.testError){
-      el.style.color='var(--gold)';
-      el.textContent='⚠️ บันทึกแล้ว แต่ทดสอบ LINE ไม่ได้: '+r.testError;
-      toast('⚠️ บันทึกแล้ว แต่ทดสอบไม่ผ่าน','e');
-    }else{
-      el.style.color='var(--grn)';
-      el.textContent='✅ บันทึก credentials สำเร็จแล้ว';
-      toast('✅ บันทึกสำเร็จ');
-    }
-    ['c-secret','c-token','c-ai'].forEach(id=>document.getElementById(id).value='');
-    loadCredStatus();
-  }else{
-    el.style.color='var(--red)';
-    el.textContent='❌ '+( r.error||'unknown error');
-    toast('❌ บันทึกไม่สำเร็จ','e');
-  }
-}
-
-async function saveMongo(){
-  const uri=document.getElementById('c-mongo').value.trim();
-  if(!uri){toast('❌ กรุณาใส่ MongoDB URI','e');return;}
-  const el=document.getElementById('mongo-result');
-  el.style.display='block';el.style.color='var(--muted)';el.textContent='⏳ กำลังทดสอบ MongoDB...';
-  const r=await api('/api/mongo-uri',{mongoUri:uri});
-  if(r.ok){
-    el.style.color='var(--grn)';el.textContent='✅ เชื่อมต่อ MongoDB สำเร็จ: '+(r.dbName||'himangkorn');
-    document.getElementById('c-mongo').value='';
-    toast('✅ MongoDB เชื่อมต่อแล้ว'); loadMongoStatus();
-  }else{
-    el.style.color='var(--red)';el.textContent='❌ '+r.error;
-    toast('❌ MongoDB error','e');
-  }
-}
-
-async function loadMongoStatus(){
-  const el=document.getElementById('mongo-status');if(!el)return;
-  try{
-    const r=await api('/health');
-    el.innerHTML=r.mongoConnected
-      ?'<span style="color:var(--grn)">🟢 MongoDB เชื่อมต่อแล้ว</span>'
-      :'<span style="color:var(--gold)">🟡 ยังไม่ได้เชื่อมต่อ (ใช้ db.json)</span>';
-  }catch{
-    const el2=document.getElementById('mongo-status');
-    if(el2)el2.innerHTML='<span style="color:var(--muted)">ตรวจสอบไม่ได้</span>';
-  }
-}
-
 async function resetData(what){
   const msg={all:'ล้างข้อมูลทั้งหมด?',bets:'ล้างรายการแทงทั้งหมด?',logs:'ล้าง Event Log?',slips:'ล้างประวัติสลิป?'};
   if(!confirm(msg[what]||'ล้างข้อมูล?'))return;
   const r=await api('/api/reset',{what});if(r.ok){toast('✅ ล้างข้อมูลแล้ว');load();}
 }
 
-function cpWh(){navigator.clipboard.writeText(window.location.origin+'/webhook');toast('✅ คัดลอก Webhook URL แล้ว');}
+function cpWh(){navigator.clipboard.writeText(document.getElementById('wh-url').innerText.replace('copy','').trim());toast('✅ คัดลอก Webhook URL แล้ว');}
 function cpCode(btn){navigator.clipboard.writeText(btn.parentElement.innerText.replace('copy','').trim());toast('✅ คัดลอกแล้ว');}
 function betTab(el,f){document.querySelectorAll('.tab-bar .tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');betFilter=f;renderBets();}
 
@@ -1977,7 +1719,6 @@ function go(id,el){
   document.getElementById('p-'+id).classList.add('on');
   if(el)el.classList.add('on');
   curP=id;
-  if(id==='setup'){loadCredStatus();loadMongoStatus();}
 }
 
 function toast(msg,t){
@@ -1989,7 +1730,5 @@ function toast(msg,t){
 }
 
 load();
-loadCredStatus();
-loadMongoStatus();
 setInterval(load,8000);
 </script></body></html>`;
