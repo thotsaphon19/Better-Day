@@ -1849,7 +1849,7 @@ function togglePw(id){
 
 async function loadCredStatus(){
   try{
-    const r=await fetch('/api/credentials?token='+encodeURIComponent(T));
+    const r=await fetch('/api/credentials?token='+encodeURIComponent(TK));
     const d=await r.json();
     if(!d.ok)return;
     const s=id=>document.getElementById(id);
@@ -1866,7 +1866,7 @@ async function loadCredStatus(){
     // Bot info
     if(d.runtimeActive?.token){
       try{
-        const br=await fetch('/api/bot-info?token='+encodeURIComponent(T));
+        const br=await fetch('/api/bot-info?token='+encodeURIComponent(TK));
         const bd=await br.json();
         if(bd.ok&&bd.info){
           s('bot-info').innerHTML=\`<b style="color:var(--txt)">\${bd.info.displayName||'—'}</b><br>
@@ -1890,7 +1890,7 @@ async function saveCreds(test=false){
   const el=document.getElementById('cred-result');
   el.style.display='block';
   el.style.color='var(--muted)';
-  el.textContent='⏳ กำลังบันทึก'+(test?' และทดสอบการเชื่อมต่อ...')+'...';
+  el.textContent=test?'⏳ กำลังบันทึก และทดสอบการเชื่อมต่อ...':'⏳ กำลังบันทึก...';
 
   const body={};
   if(secret) body.lineSecret=secret;
