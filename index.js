@@ -14,12 +14,14 @@ const { MongoClient } = require('mongodb');
 const app = express();
 
 // ─── ENV ──────────────────────────────────────────────────────
-const SECRET        = process.env.LINE_CHANNEL_SECRET       || '';
-const TOKEN         = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
-const ADMIN_PW      = process.env.ADMIN_PASSWORD            || 'admin1234';
-const PORT          = process.env.PORT                      || 3000;
-const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY         || '';
-const MONGO_URI     = process.env.MONGODB_URI               || '';
+// ทุกค่าเปลี่ยนได้ runtime ผ่านหน้าเว็บ (ไม่ต้องตั้ง .env)
+let SECRET        = process.env.LINE_CHANNEL_SECRET       || '';
+let TOKEN         = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
+let ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY         || '';
+let MONGO_URI     = process.env.MONGODB_URI               || '';
+// ADMIN_PW และ PORT เปลี่ยนได้เฉพาะผ่าน .env เท่านั้น (security)
+const ADMIN_PW    = process.env.ADMIN_PASSWORD            || 'Betterday01';
+const PORT        = process.env.PORT                      || 3000;
 
 // ─── DB (MongoDB) ─────────────────────────────────────────────
 const DEFAULT_DB = {
@@ -33,7 +35,7 @@ const DEFAULT_DB = {
   isOpen: false,
   defaultGroupId: '',
   settings: {
-    startBalance: 1000,
+    startBalance: 0,
     botName: 'Better Day',
     autoReply: true,
     autoTopupSlip: true,
@@ -42,54 +44,74 @@ const DEFAULT_DB = {
 };
 
 let _mongoClient = null;
-let _db = null;
+let _db          = null;
+let _mongoOk     = false;
+
+// ── โหลด credentials ทั้งหมดจาก DB → อัปเดต runtime ทันที ──
+async function loadCredsFromDB() {
+  try {
+    const col = await getMongoCol(); if (!col) return;
+    const doc = await col.findOne({ _id:'main' });
+    const s = doc?.settings || {};
+    const cr = s.credentials || {};
+    if (cr.lineSecret)   SECRET        = cr.lineSecret;
+    if (cr.lineToken)    TOKEN         = cr.lineToken;
+    if (cr.anthropicKey) ANTHROPIC_KEY = cr.anthropicKey;
+    console.log('🔑 credentials loaded — secret:%s token:%s ai:%s', !!SECRET, !!TOKEN, !!ANTHROPIC_KEY);
+  } catch(e) { console.warn('loadCreds:', e.message); }
+}
 
 async function getMongoCol() {
   if (!MONGO_URI) return null;
+  if (_mongoClient && !_mongoOk) {
+    try { await _mongoClient.close(); } catch {}
+    _mongoClient = null; _db = null;
+  }
   if (!_mongoClient) {
-    _mongoClient = new MongoClient(MONGO_URI);
+    _mongoClient = new MongoClient(MONGO_URI, {
+      serverSelectionTimeoutMS:8000, connectTimeoutMS:8000,
+    });
     await _mongoClient.connect();
     _db = _mongoClient.db('himangkorn');
+    _mongoOk = true;
+    _mongoClient.on('close',()=>{ _mongoOk=false; console.warn('⚠️  MongoDB disconnected'); });
+    _mongoClient.on('error',()=>{ _mongoOk=false; });
   }
   return _db.collection('gamedata');
 }
 
-// อ่าน DB — ถ้ามี MongoDB ใช้ MongoDB, ถ้าไม่มีใช้ไฟล์
 async function readDB() {
   try {
     const col = await getMongoCol();
     if (col) {
-      const doc = await col.findOne({ _id: 'main' });
-      if (!doc) return { ...DEFAULT_DB };
+      const doc = await col.findOne({ _id:'main' });
+      if (!doc) {
+        const fresh = { ...DEFAULT_DB };
+        await col.replaceOne({ _id:'main' }, { _id:'main', ...fresh }, { upsert:true });
+        return fresh;
+      }
       const { _id, ...data } = doc;
-      return { ...DEFAULT_DB, ...data, settings: { ...DEFAULT_DB.settings, ...(data.settings || {}) } };
+      return { ...DEFAULT_DB, ...data, settings:{ ...DEFAULT_DB.settings, ...(data.settings||{}) } };
     }
-  } catch (e) {
-    console.error('MongoDB readDB error:', e.message);
-  }
-  // fallback: ไฟล์
+  } catch(e) { _mongoOk=false; console.error('❌ readDB:', e.message); }
   const DB_PATH = path.join(__dirname, 'db.json');
   if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, JSON.stringify(DEFAULT_DB, null, 2));
   try {
-    const raw = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-    return { ...DEFAULT_DB, ...raw, settings: { ...DEFAULT_DB.settings, ...(raw.settings || {}) } };
+    const raw = JSON.parse(fs.readFileSync(DB_PATH,'utf8'));
+    return { ...DEFAULT_DB, ...raw, settings:{ ...DEFAULT_DB.settings, ...(raw.settings||{}) } };
   } catch { return { ...DEFAULT_DB }; }
 }
 
-// บันทึก DB
 async function saveDB(db) {
   try {
     const col = await getMongoCol();
     if (col) {
-      await col.replaceOne({ _id: 'main' }, { _id: 'main', ...db }, { upsert: true });
+      await col.replaceOne({ _id:'main' }, { _id:'main', ...db }, { upsert:true });
       return;
     }
-  } catch (e) {
-    console.error('MongoDB saveDB error:', e.message);
-  }
-  // fallback: ไฟล์
+  } catch(e) { _mongoOk=false; console.error('❌ saveDB:', e.message); }
   const DB_PATH = path.join(__dirname, 'db.json');
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+  try { fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2)); } catch {}
 }
 
 function addLog(db, type, msg, uid = '') {
@@ -140,39 +162,34 @@ function parseBets(text) {
 }
 
 function settleRound(db, round, d1, d2, d3) {
-  // หลักการ: ทุนถูกหักตอนแทงแล้ว
-  //   ชนะ → balance += ทุน + กำไร (คืนทุน + จ่ายกำไร)
-  //   แพ้  → ไม่ต้องหักซ้ำ (บันทึก totalLoss เท่านั้น)
+  // ทุนถูกหักตอนแทงแล้ว:
+  //   ชนะ → balance += ทุน + กำไร
+  //   แพ้  → บันทึก totalLoss เท่านั้น (ทุนหักไปแล้ว)
   const results = [];
-  const pending = db.bets.filter(b => b.round === round && b.status === 'pending');
+  const pending = db.bets.filter(b => b.round===round && b.status==='pending');
   for (const bet of pending) {
-    let totalProfit = 0;
+    let profit = 0;
     for (const b of bet.items) {
-      const raw = calcBet(b.type, b.amt, d1, d2, d3); // +amt=ชนะ, -amt=แพ้
+      const raw = calcBet(b.type, b.amt, d1, d2, d3);
       b.win    = raw > 0;
-      b.profit = raw > 0 ? raw : 0;       // กำไรสุทธิ (ไม่รวมทุน)
-      b.net    = raw > 0 ? raw : -b.amt;  // แสดงใน UI: +กำไร หรือ -ทุน
+      b.profit = raw > 0 ? raw : 0;
+      b.net    = raw > 0 ? raw : -b.amt;
       b.result = raw > 0 ? 'ชนะ' : 'แพ้';
-      totalProfit += b.profit;
+      profit  += b.profit;
     }
     bet.status = 'settled';
-    bet.net    = totalProfit > 0 ? totalProfit : -bet.total; // UI summary
-
+    bet.net    = profit > 0 ? profit : -bet.total;
     const p = db.players[bet.uid];
     if (p) {
-      if (totalProfit > 0) {
-        // ชนะ: คืนทุนทั้งหมด + กำไร
-        p.balance  += bet.total + totalProfit;
-        p.totalWin += totalProfit;
+      if (profit > 0) {
+        p.balance  += bet.total + profit;  // คืนทุน + กำไร
+        p.totalWin += profit;
       } else {
-        // แพ้: ทุนหักไปแล้วตอนแทง — บันทึก loss เท่านั้น
-        p.totalLoss += bet.total;
+        p.totalLoss += bet.total;          // บันทึกการเสียเท่านั้น
       }
     }
-    results.push({
-      uid:bet.uid, name:bet.name, memberId:bet.memberId,
-      net:bet.net, balance:db.players[bet.uid]?.balance||0,
-    });
+    results.push({ uid:bet.uid, name:bet.name, memberId:bet.memberId,
+      net:bet.net, balance:db.players[bet.uid]?.balance||0 });
   }
   return results;
 }
@@ -329,10 +346,10 @@ function findPlayerByName(db, searchName) {
 }
 
 // ─── ข้อความรูปแบบตามภาพ ─────────────────────────────────────
-const betReply   = (name,bets,bal,total)  => `${name} แทง ✅\n${bets.map(b=>`  ${b.type} = ${b.amt.toLocaleString()}`).join('\n')}\nรวม: ${(total||bets.reduce((s,b)=>s+b.amt,0)).toLocaleString()} บาท\n💳 เงินคงเหลือ = ${bal.toLocaleString()} บาท`;
-const extraReply = (name,bets,bal,total) => `${name} เพิ่ม ✅\n${bets.map(b=>`  ${b.type} = ${b.amt.toLocaleString()}`).join('\n')}\nรวม: ${(total||bets.reduce((s,b)=>s+b.amt,0)).toLocaleString()} บาท\n💳 เงินคงเหลือ = ${bal.toLocaleString()} บาท`;
-const winReply   = (name,id,bets,bal) => `🏆 ${name} ชนะ!\n${bets.map(b=>`  ${b.type}: +${b.profit?.toLocaleString()||b.amt.toLocaleString()}`).join('\n')}\n💰 เงินคงเหลือ = ${bal.toLocaleString()} บาท`;
-const loseReply  = (name,id,bal)    => `😔 ${name} เสีย\n💳 เงินคงเหลือ = ${bal.toLocaleString()} บาท`;
+const betReply   = (name,bets,bal,total) => `${name} แทง ✅\n${bets.map(b=>`  ${b.type} = ${b.amt.toLocaleString()}`).join('\n')}\n─────────────\nรวม: ${(total||0).toLocaleString()} บาท\n💳 คงเหลือ: ${bal.toLocaleString()} บาท`;
+const extraReply = (name,bets,bal,total) => `${name} เพิ่ม ✅\n${bets.map(b=>`  ${b.type} = ${b.amt.toLocaleString()}`).join('\n')}\n─────────────\nรวม: ${(total||0).toLocaleString()} บาท\n💳 คงเหลือ: ${bal.toLocaleString()} บาท`;
+const winReply   = (name,id,bets,bal) => `🏆 ${name} ชนะ!\n${bets.map(b=>`  ${b.type}: +${(b.profit||b.amt).toLocaleString()}`).join('\n')}\n💰 คงเหลือ: ${bal.toLocaleString()} บาท`;
+const loseReply  = (name,id,bal)    => `😔 ${name} เสีย\n💳 คงเหลือ: ${bal.toLocaleString()} บาท`;
 
 // ─── ออกผลพร้อมส่งกลับกลุ่ม ──────────────────────────────────
 async function doResult(db, d1, d2, d3, groupId, replyTk) {
@@ -409,7 +426,7 @@ app.post('/webhook', async (req, res) => {
       db.players[uid] = {
         name: prof?.displayName || `สมาชิก${cnt}`,
         uid, memberId: cnt,
-        balance:  db.settings?.startBalance || 1000,
+        balance: 0,
         totalBet: 0, totalWin: 0, totalLoss: 0,
         joinedAt: new Date().toISOString(),
         groupId,
@@ -549,14 +566,11 @@ app.post('/webhook', async (req, res) => {
 
       // เช็คยอด
       if (/^(ยอด|เงิน|balance|คงเหลือ)$/i.test(lower)) {
-        const pendingAmt = db.bets
-          .filter(b=>b.uid===uid&&b.status==='pending')
-          .reduce((s,b)=>s+b.total,0);
+        const pend = db.bets.filter(b=>b.uid===uid&&b.status==='pending').reduce((s,b)=>s+b.total,0);
         await replyMsg(replyTk, [txtMsg(
-          `💰 ${name}\n` +
-          `ID: ${player.memberId}\n` +
-          `เงินคงเหลือ = ${player.balance.toLocaleString()} บาท` +
-          (pendingAmt>0 ? `\n⏳ รอผล = ${pendingAmt.toLocaleString()} บาท` : '')
+          `💰 ${name}\nID: ${player.memberId}\n` +
+          `คงเหลือ: ${player.balance.toLocaleString()} บาท` +
+          (pend>0?`\n⏳ รอผล: ${pend.toLocaleString()} บาท`:'')
         )]);
         await saveDB(db); continue;
       }
@@ -671,7 +685,7 @@ app.post('/webhook', async (req, res) => {
         const allItems = [...regular, ...extra];
         const total    = allItems.reduce((s,b)=>s+b.amt, 0);
 
-        // ── ตรวจเงินพอก่อนแทง ─────────────────────────────────
+        // ตรวจเงินพอ
         if (player.balance < total) {
           await replyMsg(replyTk, [txtMsg(
             `❌ เงินไม่พอ!\n` +
@@ -682,7 +696,7 @@ app.post('/webhook', async (req, res) => {
           await saveDB(db); continue;
         }
 
-        // ── หักเงินทันทีตอนแทง ────────────────────────────────
+        // หักเงินทันที
         player.balance  -= total;
         player.totalBet += total;
 
@@ -692,38 +706,85 @@ app.post('/webhook', async (req, res) => {
           status:'pending', ts:new Date().toISOString(), groupId,
         });
         if (db.bets.length > 50000) db.bets.length = 50000;
-        addLog(db, 'bet', `${name} แทง ${allItems.length} รายการ รวม ${total} รอบ ${db.currentRound} (เหลือ ${player.balance})`, uid);
+        addLog(db, 'bet', `${name} แทง ${allItems.length} รายการ รวม ${total} (เหลือ ${player.balance})`, uid);
 
         const replies = [];
-        if (regular.length > 0) replies.push(txtMsg(betReply(name, regular, player.balance, regular.reduce((s,b)=>s+b.amt,0))));
-        if (extra.length   > 0) replies.push(txtMsg(extraReply(name, extra, player.balance, extra.reduce((s,b)=>s+b.amt,0))));
+        const rTotal = regular.reduce((s,b)=>s+b.amt,0);
+        const eTotal = extra.reduce((s,b)=>s+b.amt,0);
+        if (regular.length > 0) replies.push(txtMsg(betReply(name, regular, player.balance, rTotal)));
+        if (extra.length   > 0) replies.push(txtMsg(extraReply(name, extra, player.balance, eTotal)));
         if (replies.length > 0) await replyMsg(replyTk, replies);
         await saveDB(db); continue;
       }
     }
 
-    // JOIN
+    // ── JOIN: บอทเข้ากลุ่ม → ดึงสมาชิกอัตโนมัติ ─────────────
     if (ev.type === 'join') {
       if (groupId) db.defaultGroupId = groupId;
-      addLog(db, 'join', `เข้ากลุ่ม ${groupId||''}`);
-      await replyMsg(replyTk, [txtMsg(`🐉 สวัสดีครับ! Better Day Bot พร้อมแล้ว\n\nพิมพ์ "วิธีแทง" เพื่อดูคำสั่ง\n💳 ส่งสลิปเพื่อเติมเงินอัตโนมัติ`)]);
+      addLog(db, 'join', `บอทเข้ากลุ่ม ${groupId||''}`);
+      await saveDB(db);
+      await replyMsg(replyTk, [txtMsg(`🐉 สวัสดีครับ! Better Day Bot พร้อมแล้ว\n🔄 กำลังดึงข้อมูลสมาชิก...\nพิมพ์ "วิธีแทง" เพื่อดูคำสั่ง`)]);
+      if (TOKEN && groupId) {
+        setImmediate(async () => {
+          try {
+            const db2 = await readDB();
+            const { added } = await importGroupMembers(db2, groupId);
+            await saveDB(db2);
+            if (added > 0) await pushMsg(groupId, [txtMsg(`✅ เพิ่มสมาชิก ${added} คนเข้าระบบแล้ว\n💳 ส่งสลิปเติมเงิน แล้วแทงได้เลย!`)]);
+          } catch(e) { console.error('auto-import:', e.message); }
+        });
+      }
+    }
+
+    // ── MEMBER JOINED: คนเข้ากลุ่ม ──────────────────────────
+    if (ev.type === 'memberJoined') {
+      const members = ev.joined?.members || [];
+      for (const m of members) {
+        if (m.type!=='user') continue;
+        const mUid=m.userId; if(!mUid) continue;
+        const prof = await getProfile(mUid, groupId);
+        const dname = prof?.displayName||`สมาชิก${Object.keys(db.players).length+1}`;
+        if (!db.players[mUid]) {
+          const cnt = Object.keys(db.players).length+1;
+          db.players[mUid] = { name:dname, uid:mUid, memberId:cnt, balance:0,
+            totalBet:0, totalWin:0, totalLoss:0, joinedAt:new Date().toISOString(), groupId };
+          addLog(db, 'follow', `${dname} เข้ากลุ่ม (ใหม่)`, mUid);
+          if (db.settings?.autoReply!==false)
+            await pushMsg(groupId, [txtMsg(`🐉 ยินดีต้อนรับ ${dname}!\nID: ${cnt} | เงิน: 0 บาท\n💳 ส่งสลิปเติมเงิน แล้วแทงได้เลย`)]);
+        } else {
+          db.players[mUid].groupId=groupId;
+          addLog(db, 'follow', `${db.players[mUid].name} กลับเข้ากลุ่ม`, mUid);
+        }
+      }
       await saveDB(db);
     }
 
-    // FOLLOW
+    // ── MEMBER LEFT ───────────────────────────────────────────
+    if (ev.type === 'memberLeft') {
+      for (const m of (ev.left?.members||[])) {
+        if (m.type!=='user'||!m.userId) continue;
+        const p=db.players[m.userId];
+        if (p) { p.groupId=null; addLog(db,'msg',`${p.name} ออกจากกลุ่ม`,m.userId); }
+      }
+      await saveDB(db);
+    }
+
+    // ── FOLLOW: add บอท 1:1 ───────────────────────────────────
     if (ev.type === 'follow') {
       const prof = await getProfile(uid, null);
+      const dname = prof?.displayName||`สมาชิก${Object.keys(db.players).length+1}`;
       if (!db.players[uid]) {
-        const cnt = Object.keys(db.players).length + 1;
-        db.players[uid] = { name:prof?.displayName||`สมาชิก${cnt}`, uid, memberId:cnt,
-          balance:db.settings?.startBalance||1000, totalBet:0, totalWin:0, totalLoss:0, joinedAt:new Date().toISOString() };
+        const cnt = Object.keys(db.players).length+1;
+        db.players[uid] = { name:dname, uid, memberId:cnt, balance:0,
+          totalBet:0, totalWin:0, totalLoss:0, joinedAt:new Date().toISOString(), groupId:null };
       }
-      await replyMsg(replyTk, [txtMsg(`🐉 ยินดีต้อนรับ ${db.players[uid].name}!\nID : ${db.players[uid].memberId}\nเงินคงเหลือ = ${db.players[uid].balance.toLocaleString()} 💰💰\n\nพิมพ์ "วิธีแทง" เพื่อดูคำสั่ง\n💳 ส่งสลิปเพื่อเติมเงินอัตโนมัติ`)]);
-      addLog(db, 'follow', `${db.players[uid].name} add บอท`);
+      const p=db.players[uid];
+      await replyMsg(replyTk, [txtMsg(`🐉 ยินดีต้อนรับ ${p.name}!\nID: ${p.memberId} | เงิน: ${p.balance.toLocaleString()} บาท\n💳 ส่งสลิปเติมเงิน\nพิมพ์ "วิธีแทง" เพื่อดูคำสั่ง`)]);
+      addLog(db, 'follow', `${p.name} add บอท`, uid);
       await saveDB(db);
     }
   }
-});
+});;
 
 // ─── REST API ─────────────────────────────────────────────────
 app.use(express.json());
@@ -890,6 +951,117 @@ app.post('/api/settings', auth, async (req, res) => {
   res.json({ ok:true });
 });
 
+// ════════════════════════════════════════════════════════════
+// API: ตั้งค่า credentials — ไม่ต้องใช้ .env
+// ════════════════════════════════════════════════════════════
+
+// POST /api/credentials { lineSecret, lineToken, anthropicKey, mongoUri, testConnection }
+app.post('/api/credentials', auth, async (req, res) => {
+  const { lineSecret, lineToken, anthropicKey, mongoUri, testConnection } = req.body;
+  const db = await readDB();
+  if (!db.settings.credentials) db.settings.credentials = {};
+
+  // อัปเดต runtime + บันทึก DB
+  if (lineSecret)   { SECRET        = lineSecret;   db.settings.credentials.lineSecret   = lineSecret;   }
+  if (lineToken)    { TOKEN         = lineToken;     db.settings.credentials.lineToken     = lineToken;     }
+  if (anthropicKey) { ANTHROPIC_KEY = anthropicKey; db.settings.credentials.anthropicKey = anthropicKey; }
+  if (mongoUri && !mongoUri.includes('<password>')) {
+    db.settings.credentials.mongoUri = mongoUri;
+  }
+  await saveDB(db);
+
+  // ทดสอบ LINE connection
+  if (testConnection && TOKEN) {
+    try {
+      const info = await new Promise((resolve, reject) => {
+        const r = https.request({ hostname:'api.line.me', path:'/v2/bot/info', method:'GET',
+          headers:{ Authorization:`Bearer ${TOKEN}` }
+        }, resp => { let b=''; resp.on('data',d=>b+=d); resp.on('end',()=>{ try{resolve(JSON.parse(b));}catch{resolve({});} }); });
+        r.on('error', reject); r.end();
+      });
+      return res.json({ ok:true, saved:true, botInfo:info });
+    } catch(e) { return res.json({ ok:true, saved:true, testError:e.message }); }
+  }
+  res.json({ ok:true, saved:true });
+});
+
+// GET /api/credentials — ดู status (masked)
+app.get('/api/credentials', auth, async (req, res) => {
+  const db = await readDB();
+  const cr = db.settings?.credentials || {};
+  const mask = v => v ? v.slice(0,4)+'••••••'+v.slice(-4) : '';
+  res.json({ ok:true,
+    lineSecret:   { set:!!SECRET||!!cr.lineSecret,     preview:mask(cr.lineSecret||SECRET)   },
+    lineToken:    { set:!!TOKEN||!!cr.lineToken,       preview:mask(cr.lineToken||TOKEN)     },
+    anthropicKey: { set:!!ANTHROPIC_KEY||!!cr.anthropicKey, preview:mask(cr.anthropicKey||ANTHROPIC_KEY) },
+    mongoUri:     { set:!!MONGO_URI||!!cr.mongoUri,    preview:mask(cr.mongoUri||MONGO_URI)  },
+    runtimeActive:{ secret:!!SECRET, token:!!TOKEN, ai:!!ANTHROPIC_KEY, mongo:_mongoOk },
+  });
+});
+
+// POST /api/mongo-uri — เชื่อมต่อ MongoDB แบบ live
+app.post('/api/mongo-uri', auth, async (req, res) => {
+  const { mongoUri } = req.body;
+  if (!mongoUri) return res.json({ ok:false, error:'กรุณาใส่ URI' });
+  if (mongoUri.includes('<password>')) return res.json({ ok:false, error:'แทนที่ <password> ด้วยรหัสผ่านจริงก่อน' });
+
+  // ทดสอบ connection
+  let tc;
+  try {
+    tc = new MongoClient(mongoUri, { serverSelectionTimeoutMS:8000 });
+    await tc.connect();
+    await tc.db('admin').command({ ping:1 });
+    await tc.close(); tc = null;
+  } catch(e) {
+    if (tc) { try { await tc.close(); } catch {} }
+    return res.json({ ok:false, error:'เชื่อมต่อไม่ได้: '+e.message });
+  }
+
+  // ปิด connection เดิม + เปิดใหม่
+  if (_mongoClient) { try { await _mongoClient.close(); } catch {} }
+  _mongoClient = null; _db = null; _mongoOk = false;
+  MONGO_URI = mongoUri;
+  try {
+    await getMongoCol();
+    const db = await readDB();
+    if (!db.settings.credentials) db.settings.credentials = {};
+    db.settings.credentials.mongoUri = mongoUri;
+    db.settings.botName      = db.settings.botName      || 'Better Day';
+    db.settings.startBalance = db.settings.startBalance ?? 0;
+    await saveDB(db);
+    await loadCredsFromDB(); // โหลด credentials ที่อาจมีอยู่ใน DB ใหม่
+    console.log('✅ MongoDB URI updated live');
+    res.json({ ok:true, connected:true, dbName:_db?.databaseName||'himangkorn' });
+  } catch(e) { res.json({ ok:false, error:e.message }); }
+});
+
+// GET /api/bot-info
+app.get('/api/bot-info', auth, async (req, res) => {
+  if (!TOKEN) return res.json({ ok:false, error:'ยังไม่ได้ตั้ง LINE Token' });
+  try {
+    const info = await new Promise((resolve, reject) => {
+      const r = https.request({ hostname:'api.line.me', path:'/v2/bot/info', method:'GET',
+        headers:{ Authorization:`Bearer ${TOKEN}` }
+      }, resp => { let b=''; resp.on('data',d=>b+=d); resp.on('end',()=>{ try{resolve(JSON.parse(b));}catch{resolve({});} }); });
+      r.on('error', reject); r.end();
+    });
+    res.json({ ok:true, info });
+  } catch(e) { res.json({ ok:false, error:e.message }); }
+});
+
+// POST /api/import-group — ดึงสมาชิกกลุ่ม LINE
+app.post('/api/import-group', auth, async (req, res) => {
+  if (!TOKEN) return res.json({ ok:false, error:'ยังไม่ได้ตั้ง LINE Token' });
+  const db = await readDB();
+  const gid = req.body.groupId || db.defaultGroupId;
+  if (!gid) return res.json({ ok:false, error:'ไม่มี groupId' });
+  try {
+    const result = await importGroupMembers(db, gid);
+    await saveDB(db);
+    res.json({ ok:true, ...result });
+  } catch(e) { res.json({ ok:false, error:e.message }); }
+});
+
 app.post('/api/reset', auth, async (req, res) => {
   const { what } = req.body;
   const db = await readDB();
@@ -902,31 +1074,39 @@ app.post('/api/reset', auth, async (req, res) => {
   res.json({ ok:true });
 });
 
-app.get('/health', (_, res) => res.json({ ok:true, ts:new Date().toISOString(), port:PORT, aiEnabled: !!ANTHROPIC_KEY }));
+app.get('/health', (_, res) => res.json({ ok:true, ts:new Date().toISOString(), port:PORT, aiEnabled:!!ANTHROPIC_KEY, lineOk:!!TOKEN&&!!SECRET, mongoConnected:_mongoOk }));
 app.get('/', (req, res) => res.send(DASHBOARD_HTML.replace(/__TOKEN__/g, req.query.token||'').replace(/__PORT__/g, PORT).replace(/__ADMIN_PW__/g, ADMIN_PW)));
 
 // ─── START ────────────────────────────────────────────────────
 async function start() {
+  // 1. เชื่อม MongoDB จาก .env ก่อน (ถ้ามี)
   if (MONGO_URI) {
     try {
       await getMongoCol();
-      console.log('✅ MongoDB เชื่อมต่อสำเร็จ');
-    } catch (e) {
-      console.error('❌ MongoDB เชื่อมต่อล้มเหลว:', e.message);
-      console.log('⚠️  ใช้ไฟล์ db.json แทน');
+      console.log('✅ MongoDB connected (env)');
+      await loadCredsFromDB(); // โหลด credentials ที่บันทึกไว้ใน DB
+    } catch(e) {
+      console.error('❌ MongoDB (env) failed:', e.message);
     }
   } else {
-    console.log('⚠️  MONGODB_URI ไม่ได้ตั้งค่า — ใช้ไฟล์ db.json แทน');
+    console.log('ℹ️  ไม่มี MONGODB_URI ใน env — ตั้งค่าผ่านหน้าเว็บได้เลย');
   }
 
   app.listen(PORT, () => {
-    console.log(`\Better Day v4.0 — AI Slip Analyzer Edition`);
+    console.log('');
+    console.log('╔══════════════════════════════════════╗');
+    console.log('║  Better Day v4 — AI Slip Edition     ║');
+    console.log('╚══════════════════════════════════════╝');
     console.log(`📊 Dashboard: http://localhost:${PORT}/?token=${ADMIN_PW}`);
     console.log(`🔗 Webhook:   http://localhost:${PORT}/webhook`);
-    console.log(SECRET ? '✅ LINE Secret OK' : '⚠️  LINE_CHANNEL_SECRET ยังไม่ได้ตั้งค่า');
-    console.log(TOKEN  ? '✅ LINE Token OK'  : '⚠️  LINE_CHANNEL_ACCESS_TOKEN ยังไม่ได้ตั้งค่า');
-    console.log(ANTHROPIC_KEY ? '✅ Anthropic AI OK (AI สลิปพร้อมใช้)' : '⚠️  ANTHROPIC_API_KEY ยังไม่ได้ตั้งค่า — AI สลิปจะไม่ทำงาน');
     console.log('');
+    console.log('Status:');
+    console.log(_mongoOk      ? '  ✅ MongoDB    : connected' : '  ⚠️  MongoDB    : not connected (ตั้งค่าในเว็บได้)');
+    console.log(SECRET        ? '  ✅ LINE Secret: OK'        : '  ⚠️  LINE Secret: not set (ตั้งค่าในเว็บได้)');
+    console.log(TOKEN         ? '  ✅ LINE Token : OK'        : '  ⚠️  LINE Token : not set (ตั้งค่าในเว็บได้)');
+    console.log(ANTHROPIC_KEY ? '  ✅ AI Key     : OK'        : '  ⚠️  AI Key     : not set (ตั้งค่าในเว็บได้)');
+    console.log('');
+    console.log('💡 ตั้งค่าทุกอย่างได้ที่ Dashboard → ตั้งค่า');
   });
 }
 start();
@@ -1315,30 +1495,136 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 
 <!-- SETUP -->
 <div id="p-setup" class="page">
+  <!-- STATUS BAR -->
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">
+    <div class="kpi"><div class="kl">MongoDB</div><div id="st-mongo" style="font-size:12px;font-weight:600;margin-top:4px">⬜ —</div></div>
+    <div class="kpi"><div class="kl">LINE Secret</div><div id="st-secret" style="font-size:12px;font-weight:600;margin-top:4px">⬜ —</div></div>
+    <div class="kpi"><div class="kl">LINE Token</div><div id="st-token" style="font-size:12px;font-weight:600;margin-top:4px">⬜ —</div></div>
+    <div class="kpi"><div class="kl">Anthropic AI</div><div id="st-ai" style="font-size:12px;font-weight:600;margin-top:4px">⬜ —</div></div>
+    <div class="kpi"><div class="kl">Bot Name</div><div id="st-bot" style="font-size:12px;font-weight:600;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⬜ —</div></div>
+  </div>
+
   <div class="g2">
     <div>
+      <!-- MongoDB -->
       <div class="setup-box">
-        <h3>🔑 LINE API Credentials</h3>
-        <div class="code-block">LINE_CHANNEL_SECRET=<span style="color:var(--gold)">ค่าจาก LINE Console</span>
-LINE_CHANNEL_ACCESS_TOKEN=<span style="color:var(--gold)">ค่าจาก LINE Console</span>
-ANTHROPIC_API_KEY=<span style="color:var(--cyan)">sk-ant-...</span>
-ADMIN_PASSWORD=<span style="color:var(--gold)">__ADMIN_PW__</span>
-PORT=<span style="color:var(--gold)">__PORT__</span>
-<button class="cbtn" onclick="cpCode(this)">copy</button></div>
+        <h3>🍃 MongoDB — บันทึกข้อมูลถาวร</h3>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:10px">
+          <a href="https://cloud.mongodb.com" target="_blank" style="color:var(--cyan)">cloud.mongodb.com</a>
+          → Cluster → Connect → Drivers → Copy string → แทนที่ &lt;password&gt;
+        </p>
+        <div id="mongo-status-box" style="padding:8px 10px;background:var(--bg3);border-radius:6px;font-size:11px;margin-bottom:10px">กำลังตรวจสอบ...</div>
+        <div class="fr"><label>🔗 MongoDB URI</label>
+          <div style="position:relative">
+            <input class="inp" id="c-mongo" type="password" style="width:100%;padding-right:52px"
+              placeholder="mongodb+srv://user:password@cluster.mongodb.net/himangkorn">
+            <button onclick="togglePw('c-mongo')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">👁</button>
+          </div>
+          <span style="font-size:10px;color:var(--red)">⚠️ ต้องแทนที่ &lt;password&gt; ด้วยรหัสผ่านจริงก่อนกด</span>
+        </div>
+        <button class="tbtn gold" onclick="saveMongo()" style="width:100%;padding:9px">🍃 บันทึก + ทดสอบ MongoDB</button>
+        <div id="mongo-result" style="display:none;margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:6px;font-size:11px"></div>
       </div>
+
+      <!-- LINE OA -->
+      <div class="setup-box">
+        <h3>🟢 LINE Official Account</h3>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:10px">
+          <a href="https://developers.line.biz" target="_blank" style="color:var(--cyan)">developers.line.biz</a>
+          → Channel → Basic settings + Messaging API
+        </p>
+        <div class="fr"><label>🔐 Channel Secret <span style="color:var(--muted);font-weight:400">(Basic settings)</span></label>
+          <div style="position:relative">
+            <input class="inp" id="c-secret" type="password" style="width:100%;padding-right:52px" placeholder="32 ตัวอักษร...">
+            <button onclick="togglePw('c-secret')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">👁</button>
+          </div>
+        </div>
+        <div class="fr"><label>🎫 Channel Access Token <span style="color:var(--muted);font-weight:400">(Messaging API → Issue)</span></label>
+          <div style="position:relative">
+            <input class="inp" id="c-token" type="password" style="width:100%;padding-right:52px" placeholder="eyJhbGci...">
+            <button onclick="togglePw('c-token')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">👁</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:7px">
+          <button class="tbtn gold" onclick="saveCreds(true)" style="flex:2;padding:9px">💾 บันทึก + ทดสอบ LINE</button>
+          <button class="tbtn" onclick="saveCreds(false)" style="flex:1;padding:9px">บันทึก</button>
+        </div>
+        <div id="cred-result" style="display:none;margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:6px;font-size:11px"></div>
+      </div>
+
+      <!-- AI Key -->
+      <div class="setup-box">
+        <h3>🤖 Anthropic AI Key</h3>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:10px">
+          <a href="https://console.anthropic.com" target="_blank" style="color:var(--cyan)">console.anthropic.com</a>
+          → API Keys → Create Key
+        </p>
+        <div class="fr"><label>🔑 API Key</label>
+          <div style="position:relative">
+            <input class="inp" id="c-ai" type="password" style="width:100%;padding-right:52px" placeholder="sk-ant-api03-...">
+            <button onclick="togglePw('c-ai')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">👁</button>
+          </div>
+        </div>
+        <button class="tbtn gold" onclick="saveAIKey()" style="width:100%;padding:9px">💾 บันทึก AI Key</button>
+        <div id="ai-result" style="display:none;margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:6px;font-size:11px"></div>
+      </div>
+
+      <!-- Webhook -->
       <div class="setup-box">
         <h3>🌐 Webhook URL</h3>
-        <div class="code-block" id="wh-url">http://localhost:__PORT__/webhook<button class="cbtn" onclick="cpWh()">copy</button></div>
-      </div>
-      <div class="setup-box">
-        <h3>⚙️ ตั้งค่าทั่วไป</h3>
-        <div class="fr"><label>ชื่อบอท</label><input class="inp" id="s-name" style="width:100%" placeholder="Better Day"></div>
-        <div class="fr"><label>เงินเริ่มต้น</label><input class="inp" id="s-balance" type="number" style="width:100%" placeholder="1000"></div>
-        <div class="fr"><label>Group ID หลัก</label><input class="inp" id="s-gid" style="width:100%" placeholder="C1234abc..."></div>
-        <button class="tbtn gold" onclick="saveSettings()" style="width:100%;padding:8px">💾 บันทึกการตั้งค่า</button>
+        <div class="code-block" style="word-break:break-all">
+          <span id="wh-url-text">กำลังโหลด...</span>
+          <button class="cbtn" onclick="cpWh()">copy</button>
+        </div>
+        <p style="font-size:10px;color:var(--muted);margin-top:6px">
+          LINE → Messaging API → Webhook URL → Verify ✅ → Use webhook ON
+        </p>
       </div>
     </div>
+
     <div>
+      <!-- ตั้งค่าทั่วไป -->
+      <div class="setup-box">
+        <h3>⚙️ ตั้งค่าทั่วไป</h3>
+        <div class="fr"><label>ชื่อบอท</label>
+          <input class="inp" id="s-name" style="width:100%" placeholder="Better Day">
+        </div>
+        <div class="fr"><label>เงินเริ่มต้น (บาท)</label>
+          <input class="inp" id="s-balance" type="number" style="width:100%" placeholder="0" min="0">
+        </div>
+        <div class="fr"><label>ยอดขั้นต่ำสลิป (บาท)</label>
+          <input class="inp" id="s-slip-min" type="number" style="width:100%" placeholder="1" min="1">
+        </div>
+        <div class="fr"><label>เติมเงินจากสลิปอัตโนมัติ</label>
+          <select class="inp" id="s-auto-slip" style="width:100%">
+            <option value="1">✅ เปิด — เติมทันที</option>
+            <option value="0">⏳ ปิด — รอแอดมินอนุมัติ</option>
+          </select>
+        </div>
+        <div class="fr"><label>ตอบกลับอัตโนมัติ (LINE)</label>
+          <select class="inp" id="s-auto-reply" style="width:100%">
+            <option value="1">✅ เปิด</option>
+            <option value="0">🔕 ปิด</option>
+          </select>
+        </div>
+        <div class="fr"><label>Group ID หลัก</label>
+          <input class="inp" id="s-gid" style="width:100%" placeholder="C47afe023937001e60de63834046e64a5">
+        </div>
+        <button class="tbtn gold" onclick="saveSettings()" style="width:100%;padding:9px">💾 บันทึกการตั้งค่า</button>
+      </div>
+
+      <!-- Import กลุ่ม -->
+      <div class="setup-box">
+        <h3>📥 Import สมาชิกกลุ่ม LINE</h3>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:10px">ดึงสมาชิกทุกคนในกลุ่มเข้าระบบ (ต้องตั้ง LINE Token ก่อน)</p>
+        <div class="fr"><label>Group ID</label>
+          <input class="inp" id="import-gid" style="width:100%" placeholder="C47afe023937001e60de63834046e64a5">
+        </div>
+        <button class="tbtn c" onclick="importGroup()" style="width:100%;padding:9px">📥 Import สมาชิกทั้งกลุ่ม</button>
+        <div id="import-result" style="display:none;margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:6px;font-size:11px"></div>
+      </div>
+
+      <!-- จัดการข้อมูล -->
       <div class="setup-box">
         <h3>♻️ จัดการข้อมูล</h3>
         <div style="display:flex;flex-direction:column;gap:7px">
@@ -1377,13 +1663,30 @@ PORT=<span style="color:var(--gold)">__PORT__</span>
 
 <script>
 const DICE=['','⚀','⚁','⚂','⚃','⚄','⚅'];
-const TK='__TOKEN__';
+const TK=(()=>{
+  const srv='__TOKEN__';
+  if(srv&&srv!=='__TOKEN__'){localStorage.setItem('bd_tk',srv);return srv;}
+  const url=new URLSearchParams(window.location.search).get('token');
+  if(url){localStorage.setItem('bd_tk',url);return url;}
+  return localStorage.getItem('bd_tk')||'';
+})();
+if(!TK){const t=prompt('🔑 Admin Password:');if(t){localStorage.setItem('bd_tk',t);window.location.search='?token='+encodeURIComponent(t);}}
 let D={}, betFilter='all', dv=[0,0,0], selPlayerUid='', toastT;
 
 async function api(p,body){
-  const o={headers:{'x-admin-token':TK,'Content-Type':'application/json'}};
+  const token=TK||localStorage.getItem('bd_tk')||'';
+  const o={headers:{'x-admin-token':token,'Content-Type':'application/json'}};
   if(body){o.method='POST';o.body=JSON.stringify(body);}
-  try{const r=await fetch(p,o);return r.json();}catch{return {ok:false,error:'network error'};}
+  try{
+    const r=await fetch(p,o);
+    if(r.status===401){
+      localStorage.removeItem('bd_tk');
+      const t=prompt('🔑 Session หมดอายุ — ใส่ Admin Password ใหม่:');
+      if(t){localStorage.setItem('bd_tk',t);window.location.search='?token='+encodeURIComponent(t);}
+      return {ok:false,error:'unauthorized'};
+    }
+    return r.json();
+  }catch(e){return {ok:false,error:'network: '+e.message};}
 }
 
 async function load(){
@@ -1416,11 +1719,15 @@ async function load(){
 
   // slip settings
   if(D.settings){
-    const el=document.getElementById('s-name');if(el)el.value=D.settings.botName||'Better Day';
-    const eb=document.getElementById('s-balance');if(eb)eb.value=D.settings.startBalance||1000;
-    const eg=document.getElementById('s-gid');if(eg)eg.value=D.defaultGroupId||'';
-    const sa=document.getElementById('sl-auto');if(sa)sa.value=D.settings.autoTopupSlip?'1':'0';
-    const sm=document.getElementById('sl-min');if(sm)sm.value=D.settings.slipMinAmount||1;
+    const se=id=>document.getElementById(id);
+    if(se('s-name'))       se('s-name').value       = D.settings.botName||'Better Day';
+    if(se('s-balance'))    se('s-balance').value     = D.settings.startBalance||0;
+    if(se('s-slip-min'))   se('s-slip-min').value    = D.settings.slipMinAmount||1;
+    if(se('s-auto-slip'))  se('s-auto-slip').value   = D.settings.autoTopupSlip?'1':'0';
+    if(se('s-auto-reply')) se('s-auto-reply').value  = D.settings.autoReply!==false?'1':'0';
+    if(se('s-gid'))        se('s-gid').value         = D.defaultGroupId||'';
+    if(se('sl-auto'))      se('sl-auto').value       = D.settings.autoTopupSlip?'1':'0';
+    if(se('sl-min'))       se('sl-min').value        = D.settings.slipMinAmount||1;
   }
 
   renderDash(); renderBets(); renderRounds(); renderPlayers(); renderFinance(); renderSlips(); renderLogs(); renderKnownGroups();
@@ -1722,11 +2029,136 @@ async function doPush(){
 
 async function saveSettings(){
   const r=await api('/api/settings',{
-    botName:document.getElementById('s-name')?.value,
-    startBalance:+document.getElementById('s-balance')?.value||1000,
-    defaultGroupId:document.getElementById('s-gid')?.value.trim(),
+    botName:       document.getElementById('s-name')?.value?.trim()||'Better Day',
+    startBalance:  +(document.getElementById('s-balance')?.value)||0,
+    slipMinAmount: +(document.getElementById('s-slip-min')?.value)||1,
+    autoTopupSlip: document.getElementById('s-auto-slip')?.value==='1',
+    autoReply:     document.getElementById('s-auto-reply')?.value==='1',
+    defaultGroupId:document.getElementById('s-gid')?.value?.trim()||'',
   });
   if(r.ok){toast('✅ บันทึกการตั้งค่าแล้ว');load();}else toast('❌ เกิดข้อผิดพลาด','e');
+}
+
+function togglePw(id){const el=document.getElementById(id);el.type=el.type==='password'?'text':'password';}
+
+async function loadCredStatus(){
+  const wh=document.getElementById('wh-url-text');
+  if(wh) wh.textContent=window.location.origin+'/webhook';
+  try{
+    const d=await api('/api/credentials');
+    if(!d?.ok) return;
+    const ok=v=>\`<span style="color:var(--grn)">🟢 \${v}</span>\`;
+    const no=()=>'<span style="color:var(--red)">🔴 ไม่ได้ตั้งค่า</span>';
+    const se=id=>document.getElementById(id);
+    if(se('st-secret')) se('st-secret').innerHTML = d.lineSecret.set   ? ok(d.lineSecret.preview)   : no();
+    if(se('st-token'))  se('st-token').innerHTML  = d.lineToken.set    ? ok(d.lineToken.preview)    : no();
+    if(se('st-ai'))     se('st-ai').innerHTML     = d.anthropicKey.set ? ok(d.anthropicKey.preview) : no();
+    const bi=se('st-bot');
+    if(d.runtimeActive?.token){
+      try{
+        const bd=await api('/api/bot-info');
+        if(bi) bi.innerHTML=bd.ok&&bd.info ? ok(bd.info.displayName||'OK') : no();
+      }catch{ if(bi) bi.innerHTML=no(); }
+    } else { if(bi) bi.innerHTML=no(); }
+  }catch(e){ console.warn('loadCredStatus:',e); }
+}
+
+async function loadMongoStatus(){
+  const el=document.getElementById('st-mongo');
+  const el2=document.getElementById('mongo-status-box');
+  try{
+    const r=await api('/health');
+    const ok='<span style="color:var(--grn)">🟢 เชื่อมต่อแล้ว</span>';
+    const no='<span style="color:var(--gold)">🟡 ยังไม่ได้เชื่อมต่อ</span>';
+    if(el)  el.innerHTML  = r.mongoConnected ? ok : no;
+    if(el2) el2.innerHTML = r.mongoConnected
+      ? '<span style="color:var(--grn)">🟢 MongoDB เชื่อมต่อแล้ว — ข้อมูลบันทึกถาวร</span>'
+      : '<span style="color:var(--gold)">🟡 ยังไม่เชื่อมต่อ — ข้อมูลหายเมื่อ restart (ใส่ URI ด้านบน)</span>';
+  }catch{ if(el) el.textContent='⬜ ตรวจไม่ได้'; }
+}
+
+async function saveCreds(test=false){
+  const secret=document.getElementById('c-secret').value.trim();
+  const token =document.getElementById('c-token').value.trim();
+  if(!secret&&!token){toast('❌ กรุณากรอก Secret หรือ Token','e');return;}
+  const el=document.getElementById('cred-result');
+  el.style.display='block';el.style.color='var(--muted)';
+  el.textContent=test?'⏳ กำลังบันทึก + ทดสอบ LINE...':'⏳ กำลังบันทึก...';
+  const body={};
+  if(secret) body.lineSecret=secret;
+  if(token)  body.lineToken=token;
+  if(test)   body.testConnection=true;
+  const r=await api('/api/credentials',body);
+  if(r?.ok){
+    if(r.botInfo){
+      const n=r.botInfo.displayName||r.botInfo.basicId||'LINE Bot';
+      el.style.color='var(--grn)';
+      el.innerHTML=\`✅ เชื่อมต่อสำเร็จ! บอท: <b>\${n}</b>\`;
+      toast('✅ LINE OA: '+n);
+    } else if(r.testError){
+      el.style.color='var(--gold)';
+      el.textContent='⚠️ บันทึกแล้ว แต่ Token อาจยังไม่ถูกต้อง: '+r.testError;
+    } else {
+      el.style.color='var(--grn)';el.textContent='✅ บันทึก credentials แล้ว';
+      toast('✅ บันทึกสำเร็จ');
+    }
+    document.getElementById('c-secret').value='';
+    document.getElementById('c-token').value='';
+    loadCredStatus();
+  } else {
+    el.style.color='var(--red)';el.textContent='❌ '+(r?.error||'ไม่สำเร็จ');
+    toast('❌ บันทึกไม่สำเร็จ','e');
+  }
+}
+
+async function saveAIKey(){
+  const ai=document.getElementById('c-ai').value.trim();
+  if(!ai){toast('❌ กรุณาใส่ API Key','e');return;}
+  const el=document.getElementById('ai-result');
+  el.style.display='block';el.style.color='var(--muted)';el.textContent='⏳ กำลังบันทึก...';
+  const r=await api('/api/credentials',{anthropicKey:ai});
+  if(r?.ok){
+    el.style.color='var(--grn)';el.textContent='✅ Anthropic Key บันทึกแล้ว — AI สลิปพร้อมใช้';
+    document.getElementById('c-ai').value='';
+    toast('✅ AI Key OK'); loadCredStatus();
+  } else {
+    el.style.color='var(--red)';el.textContent='❌ '+(r?.error||'ไม่สำเร็จ');
+    toast('❌ ไม่สำเร็จ','e');
+  }
+}
+
+async function saveMongo(){
+  const uri=document.getElementById('c-mongo').value.trim();
+  if(!uri){toast('❌ กรุณาใส่ URI','e');return;}
+  if(uri.includes('<password>')){toast('❌ แทนที่ <password> ด้วยรหัสผ่านจริงก่อน','e');return;}
+  const el=document.getElementById('mongo-result');
+  el.style.display='block';el.style.color='var(--muted)';
+  el.textContent='⏳ กำลังทดสอบ MongoDB... (อาจใช้เวลา 5-10 วินาที)';
+  const r=await api('/api/mongo-uri',{mongoUri:uri});
+  if(r?.ok){
+    el.style.color='var(--grn)';
+    el.textContent='✅ MongoDB เชื่อมต่อสำเร็จ! DB: '+(r.dbName||'himangkorn');
+    document.getElementById('c-mongo').value='';
+    toast('✅ MongoDB OK'); loadMongoStatus();
+  } else {
+    el.style.color='var(--red)';el.textContent='❌ '+(r?.error||'เชื่อมต่อไม่ได้');
+    toast('❌ MongoDB error','e');
+  }
+}
+
+async function importGroup(){
+  const gid=document.getElementById('import-gid')?.value.trim()||'';
+  const el=document.getElementById('import-result');
+  el.style.display='block';el.style.color='var(--muted)';el.textContent='⏳ กำลังดึงสมาชิก...';
+  const r=await api('/api/import-group',{groupId:gid});
+  if(r?.ok){
+    el.style.color='var(--grn)';
+    el.textContent=\`✅ Import \${r.total} คน | ใหม่ \${r.added} | มีแล้ว \${r.existed}\`;
+    toast('✅ Import '+r.added+' คนใหม่'); load();
+  } else {
+    el.style.color='var(--red)';el.textContent='❌ '+(r?.error||'ไม่สำเร็จ');
+    toast('❌ Import ไม่สำเร็จ','e');
+  }
 }
 
 async function resetData(what){
@@ -1735,7 +2167,7 @@ async function resetData(what){
   const r=await api('/api/reset',{what});if(r.ok){toast('✅ ล้างข้อมูลแล้ว');load();}
 }
 
-function cpWh(){navigator.clipboard.writeText(document.getElementById('wh-url').innerText.replace('copy','').trim());toast('✅ คัดลอก Webhook URL แล้ว');}
+function cpWh(){navigator.clipboard.writeText(window.location.origin+'/webhook');toast('✅ คัดลอก Webhook URL แล้ว');}
 function cpCode(btn){navigator.clipboard.writeText(btn.parentElement.innerText.replace('copy','').trim());toast('✅ คัดลอกแล้ว');}
 function betTab(el,f){document.querySelectorAll('.tab-bar .tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');betFilter=f;renderBets();}
 
@@ -1746,6 +2178,7 @@ function go(id,el){
   document.getElementById('p-'+id).classList.add('on');
   if(el)el.classList.add('on');
   curP=id;
+  if(id==='setup'){loadCredStatus();loadMongoStatus();}
 }
 
 function toast(msg,t){
@@ -1757,5 +2190,7 @@ function toast(msg,t){
 }
 
 load();
+loadCredStatus();
+loadMongoStatus();
 setInterval(load,8000);
 </script></body></html>`;
