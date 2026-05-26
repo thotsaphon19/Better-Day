@@ -41,93 +41,64 @@ const DEFAULT_DB = {
   }
 };
 
-// ─── MongoDB Layer (robust: reconnect + credentials from DB) ──
 let _mongoClient = null;
 let _db          = null;
-let _mongoOk     = false;  // flag บอกว่าเชื่อมต่อสำเร็จหรือยัง
+let _mongoOk     = false;
 
-// โหลด credentials จาก DB → อัปเดต runtime vars
 async function loadCredentialsFromDB() {
   try {
-    const col = await getMongoCol();
-    if (!col) return;
-    const doc = await col.findOne({ _id: 'main' });
+    const col = await getMongoCol(); if (!col) return;
+    const doc = await col.findOne({ _id:'main' });
     const cr = doc?.settings?.credentials || {};
     if (cr.lineSecret)   SECRET        = cr.lineSecret;
     if (cr.lineToken)    TOKEN         = cr.lineToken;
     if (cr.anthropicKey) ANTHROPIC_KEY = cr.anthropicKey;
-    console.log('🔑 credentials: secret=%s token=%s ai=%s', !!SECRET, !!TOKEN, !!ANTHROPIC_KEY);
+    console.log('🔑 credentials loaded: secret=%s token=%s ai=%s', !!SECRET, !!TOKEN, !!ANTHROPIC_KEY);
   } catch(e) { console.warn('loadCreds:', e.message); }
 }
 
 async function getMongoCol() {
   if (!MONGO_URI) return null;
-  // reconnect ถ้า connection หลุด
-  if (_mongoClient && !_mongoOk) {
-    try { await _mongoClient.close(); } catch {}
-    _mongoClient = null; _db = null;
-  }
+  if (_mongoClient && !_mongoOk) { try { await _mongoClient.close(); } catch {} _mongoClient=null; _db=null; }
   if (!_mongoClient) {
-    _mongoClient = new MongoClient(MONGO_URI, {
-      serverSelectionTimeoutMS: 8000,
-      connectTimeoutMS:         8000,
-      socketTimeoutMS:          30000,
-    });
+    _mongoClient = new MongoClient(MONGO_URI, { serverSelectionTimeoutMS:8000, connectTimeoutMS:8000 });
     await _mongoClient.connect();
-    _db     = _mongoClient.db('himangkorn');
+    _db = _mongoClient.db('himangkorn');
     _mongoOk = true;
-    // ตรวจ disconnect event
-    _mongoClient.on('close',   () => { _mongoOk = false; console.warn('⚠️  MongoDB disconnected'); });
-    _mongoClient.on('error',   () => { _mongoOk = false; });
+    _mongoClient.on('close', () => { _mongoOk=false; console.warn('⚠️ MongoDB disconnected'); });
+    _mongoClient.on('error', () => { _mongoOk=false; });
     console.log('✅ MongoDB connected:', _db.databaseName);
   }
   return _db.collection('gamedata');
 }
 
-// อ่าน DB — MongoDB first, fallback → db.json
 async function readDB() {
   try {
     const col = await getMongoCol();
     if (col) {
-      const doc = await col.findOne({ _id: 'main' });
+      const doc = await col.findOne({ _id:'main' });
       if (!doc) {
-        // ยังไม่มีข้อมูลใน MongoDB → บันทึก DEFAULT_DB ลงไปเลย
         const fresh = { ...DEFAULT_DB };
         await col.replaceOne({ _id:'main' }, { _id:'main', ...fresh }, { upsert:true });
-        console.log('📦 MongoDB: สร้าง default DB แล้ว');
         return fresh;
       }
       const { _id, ...data } = doc;
       return { ...DEFAULT_DB, ...data, settings:{ ...DEFAULT_DB.settings, ...(data.settings||{}) } };
     }
-  } catch(e) {
-    _mongoOk = false;
-    console.error('❌ MongoDB readDB:', e.message);
-  }
-  // fallback: ไฟล์ (เฉพาะเมื่อ MongoDB ไม่ได้ตั้งค่า หรือ error)
+  } catch(e) { _mongoOk=false; console.error('❌ MongoDB readDB:', e.message); }
   const DB_PATH = path.join(__dirname, 'db.json');
   if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, JSON.stringify(DEFAULT_DB, null, 2));
-  try {
-    const raw = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-    return { ...DEFAULT_DB, ...raw, settings:{ ...DEFAULT_DB.settings, ...(raw.settings||{}) } };
-  } catch { return { ...DEFAULT_DB }; }
+  try { const raw = JSON.parse(fs.readFileSync(DB_PATH,'utf8')); return { ...DEFAULT_DB, ...raw, settings:{ ...DEFAULT_DB.settings, ...(raw.settings||{}) } }; }
+  catch { return { ...DEFAULT_DB }; }
 }
 
-// บันทึก DB — MongoDB first, fallback → db.json
 async function saveDB(db) {
   try {
     const col = await getMongoCol();
-    if (col) {
-      await col.replaceOne({ _id:'main' }, { _id:'main', ...db }, { upsert:true });
-      return; // บันทึก MongoDB สำเร็จ — ไม่ต้องเขียนไฟล์
-    }
-  } catch(e) {
-    _mongoOk = false;
-    console.error('❌ MongoDB saveDB:', e.message);
-  }
-  // fallback: ไฟล์
+    if (col) { await col.replaceOne({ _id:'main' }, { _id:'main', ...db }, { upsert:true }); return; }
+  } catch(e) { _mongoOk=false; console.error('❌ MongoDB saveDB:', e.message); }
   const DB_PATH = path.join(__dirname, 'db.json');
-  try { fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2)); } catch(e) { console.error('saveDB file error:', e.message); }
+  try { fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2)); } catch(e) { console.error('saveDB file:', e.message); }
 }
 
 function addLog(db, type, msg, uid = '') {
@@ -400,6 +371,36 @@ async function doResult(db, d1, d2, d3, groupId, replyTk) {
 }
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
+
+// ─── Import สมาชิกกลุ่ม (reusable helper) ────────────────────
+async function importGroupMembers(db, groupId) {
+  if (!TOKEN || !groupId) return { added:0, existed:0, total:0 };
+  let allUids=[], next=null;
+  do {
+    const page = await new Promise((resolve, reject) => {
+      const p2 = `/v2/bot/group/${groupId}/members/ids`+(next?`?start=${next}`:'');
+      const r = https.request({ hostname:'api.line.me', path:p2, method:'GET',
+        headers:{ Authorization:`Bearer ${TOKEN}` }
+      }, resp => { let b=''; resp.on('data',d=>b+=d); resp.on('end',()=>{ try{resolve(JSON.parse(b));}catch{resolve({});} }); });
+      r.on('error', reject); r.end();
+    });
+    if (page.memberIds) allUids.push(...page.memberIds);
+    next = page.next||null;
+  } while(next);
+  let added=0, existed=0;
+  for (const mUid of allUids) {
+    if (db.players[mUid]) { db.players[mUid].groupId=groupId; existed++; continue; }
+    const prof = await getProfile(mUid, groupId);
+    const cnt  = Object.keys(db.players).length+1;
+    db.players[mUid] = { name:prof?.displayName||`สมาชิก${cnt}`, uid:mUid, memberId:cnt,
+      balance:0, totalBet:0, totalWin:0, totalLoss:0, joinedAt:new Date().toISOString(), groupId };
+    addLog(db, 'follow', `Auto-import: ${db.players[mUid].name}`, mUid);
+    added++; await delay(80);
+  }
+  if (!db.defaultGroupId) db.defaultGroupId=groupId;
+  console.log(`✅ importGroupMembers: total=${allUids.length} added=${added} existed=${existed}`);
+  return { total:allUids.length, added, existed };
+}
 
 // ─── WEBHOOK ──────────────────────────────────────────────────
 app.use('/webhook', express.raw({ type: 'application/json' }));
@@ -703,24 +704,70 @@ app.post('/webhook', async (req, res) => {
       }
     }
 
-    // JOIN
+    // ── JOIN: บอทเข้ากลุ่ม → ดึงสมาชิกอัตโนมัติ ─────────────────
     if (ev.type === 'join') {
       if (groupId) db.defaultGroupId = groupId;
-      addLog(db, 'join', `เข้ากลุ่ม ${groupId||''}`);
-      await replyMsg(replyTk, [txtMsg(`🐉 สวัสดีครับ! Better Day Bot พร้อมแล้ว\n\nพิมพ์ "วิธีแทง" เพื่อดูคำสั่ง\n💳 ส่งสลิปเพื่อเติมเงินอัตโนมัติ`)]);
+      addLog(db, 'join', `บอทเข้ากลุ่ม ${groupId||''} — กำลังดึงสมาชิก...`);
+      await saveDB(db);
+      await replyMsg(replyTk, [txtMsg(`🐉 สวัสดีครับ! Better Day Bot พร้อมแล้ว\n🔄 กำลังดึงข้อมูลสมาชิก...\n\nพิมพ์ "วิธีแทง" เพื่อดูคำสั่ง`)]);
+      if (TOKEN && groupId) {
+        setImmediate(async () => {
+          try {
+            const db2 = await readDB();
+            const { added } = await importGroupMembers(db2, groupId);
+            await saveDB(db2);
+            if (added > 0) await pushMsg(groupId, [txtMsg(`✅ เพิ่มสมาชิก ${added} คนเข้าระบบแล้ว\n💳 ส่งสลิปเติมเงิน แล้วแทงได้เลย!`)]);
+          } catch(e) { console.error('auto import error:', e.message); }
+        });
+      }
+    }
+
+    // ── MEMBER JOINED: มีคนเข้ากลุ่ม ────────────────────────────
+    if (ev.type === 'memberJoined') {
+      const members = ev.joined?.members || [];
+      for (const m of members) {
+        if (m.type!=='user') continue;
+        const mUid=m.userId; if(!mUid) continue;
+        const prof = await getProfile(mUid, groupId);
+        const dname = prof?.displayName||`สมาชิก${Object.keys(db.players).length+1}`;
+        if (!db.players[mUid]) {
+          const cnt = Object.keys(db.players).length+1;
+          db.players[mUid] = { name:dname, uid:mUid, memberId:cnt, balance:0,
+            totalBet:0, totalWin:0, totalLoss:0, joinedAt:new Date().toISOString(), groupId };
+          addLog(db, 'follow', `${dname} เข้ากลุ่ม (ใหม่)`, mUid);
+          if (db.settings?.autoReply!==false)
+            await pushMsg(groupId, [txtMsg(`🐉 ยินดีต้อนรับ ${dname}!\nID: ${cnt} | เงิน: 0 บาท\n💳 ส่งสลิปเติมเงิน แล้วแทงได้เลย`)]);
+        } else {
+          db.players[mUid].groupId=groupId;
+          addLog(db, 'follow', `${db.players[mUid].name} กลับเข้ากลุ่ม`, mUid);
+        }
+      }
       await saveDB(db);
     }
 
-    // FOLLOW
+    // ── MEMBER LEFT ───────────────────────────────────────────────
+    if (ev.type === 'memberLeft') {
+      const members = ev.left?.members || [];
+      for (const m of members) {
+        if (m.type!=='user'||!m.userId) continue;
+        const p=db.players[m.userId];
+        if (p) { p.groupId=null; addLog(db,'msg',`${p.name} ออกจากกลุ่ม`,m.userId); }
+      }
+      await saveDB(db);
+    }
+
+    // ── FOLLOW: add บอท 1:1 ──────────────────────────────────────
     if (ev.type === 'follow') {
       const prof = await getProfile(uid, null);
+      const dname = prof?.displayName||`สมาชิก${Object.keys(db.players).length+1}`;
       if (!db.players[uid]) {
-        const cnt = Object.keys(db.players).length + 1;
-        db.players[uid] = { name:prof?.displayName||`สมาชิก${cnt}`, uid, memberId:cnt,
-          balance: 0, totalBet:0, totalWin:0, totalLoss:0, joinedAt:new Date().toISOString() };
+        const cnt = Object.keys(db.players).length+1;
+        db.players[uid] = { name:dname, uid, memberId:cnt, balance:0,
+          totalBet:0, totalWin:0, totalLoss:0, joinedAt:new Date().toISOString(), groupId:null };
       }
-      await replyMsg(replyTk, [txtMsg(`🐉 ยินดีต้อนรับ ${db.players[uid].name}!\nID : ${db.players[uid].memberId}\nเงินคงเหลือ = ${db.players[uid].balance.toLocaleString()} 💰💰\n\nพิมพ์ "วิธีแทง" เพื่อดูคำสั่ง\n💳 ส่งสลิปเพื่อเติมเงินอัตโนมัติ`)]);
-      addLog(db, 'follow', `${db.players[uid].name} add บอท`);
+      const p=db.players[uid];
+      await replyMsg(replyTk, [txtMsg(`🐉 ยินดีต้อนรับ ${p.name}!\nID: ${p.memberId} | เงิน: ${p.balance.toLocaleString()} บาท\n\n💳 ส่งสลิปเติมเงิน\nพิมพ์ "วิธีแทง" เพื่อดูคำสั่ง`)]);
+      addLog(db, 'follow', `${p.name} add บอท`, uid);
       await saveDB(db);
     }
   }
@@ -891,7 +938,7 @@ app.post('/api/settings', auth, async (req, res) => {
   res.json({ ok:true });
 });
 
-// ─── API: Credentials ────────────────────────────────────────
+// ─── Credentials API ─────────────────────────────────────────
 app.post('/api/credentials', auth, async (req, res) => {
   const { lineSecret, lineToken, anthropicKey, testConnection } = req.body;
   const db = await readDB();
@@ -913,47 +960,40 @@ app.post('/api/credentials', auth, async (req, res) => {
   }
   res.json({ ok:true, saved:true });
 });
-
 app.get('/api/credentials', auth, async (req, res) => {
   const db = await readDB();
-  const cr = db.settings?.credentials || {};
+  const cr = db.settings?.credentials||{};
   const mask = v => v ? v.slice(0,4)+'••••'+v.slice(-4) : '';
   res.json({ ok:true,
-    lineSecret:   { set:!!cr.lineSecret,   preview:mask(cr.lineSecret)   },
-    lineToken:    { set:!!cr.lineToken,     preview:mask(cr.lineToken)     },
-    anthropicKey: { set:!!cr.anthropicKey,  preview:mask(cr.anthropicKey)  },
+    lineSecret:  { set:!!cr.lineSecret,   preview:mask(cr.lineSecret)   },
+    lineToken:   { set:!!cr.lineToken,    preview:mask(cr.lineToken)    },
+    anthropicKey:{ set:!!cr.anthropicKey, preview:mask(cr.anthropicKey) },
     runtimeActive:{ secret:!!SECRET, token:!!TOKEN, ai:!!ANTHROPIC_KEY, mongo:_mongoOk },
   });
 });
-
+// ─── MongoDB URI API ──────────────────────────────────────────
 app.post('/api/mongo-uri', auth, async (req, res) => {
   const { mongoUri } = req.body;
   if (!mongoUri) return res.json({ ok:false, error:'กรุณาใส่ URI' });
-  if (mongoUri.includes('<password>')) return res.json({ ok:false, error:'แทนที่ <password> ด้วยรหัสผ่านจริงก่อน' });
+  if (mongoUri.includes('<password>')) return res.json({ ok:false, error:'แทนที่ <password> ก่อน' });
   let tc;
   try {
     tc = new MongoClient(mongoUri, { serverSelectionTimeoutMS:8000 });
     await tc.connect(); await tc.db('admin').command({ ping:1 }); await tc.close(); tc=null;
-  } catch(e) {
-    if(tc){try{await tc.close();}catch{}}
-    return res.json({ ok:false, error:'เชื่อมต่อไม่ได้: '+e.message });
-  }
-  // ปิด connection เดิม
-  if (_mongoClient){try{await _mongoClient.close();}catch{}}
-  _mongoClient=null; _db=null; _mongoOk=false; MONGO_URI=mongoUri;
+  } catch(e) { if(tc){try{await tc.close();}catch{}} return res.json({ ok:false, error:'เชื่อมต่อไม่ได้: '+e.message }); }
+  if (_mongoClient){try{await _mongoClient.close();}catch{}} _mongoClient=null; _db=null; _mongoOk=false; MONGO_URI=mongoUri;
   try {
-    await getMongoCol(); // เปิด connection ใหม่
+    await getMongoCol();
     const db = await readDB();
-    if (!db.settings.credentials) db.settings.credentials = {};
-    db.settings.credentials.mongoUri = mongoUri;
-    db.settings.botName = db.settings.botName || 'Better Day';
-    db.settings.startBalance = db.settings.startBalance !== undefined ? db.settings.startBalance : 0;
+    if (!db.settings.credentials) db.settings.credentials={};
+    db.settings.credentials.mongoUri=mongoUri;
+    db.settings.botName = db.settings.botName||'Better Day';
+    db.settings.startBalance = db.settings.startBalance??0;
     await saveDB(db);
-    console.log('✅ MongoDB URI updated:', _db?.databaseName);
     res.json({ ok:true, connected:true, dbName:_db?.databaseName||'himangkorn' });
   } catch(e) { res.json({ ok:false, error:e.message }); }
 });
-
+// ─── Bot Info API ─────────────────────────────────────────────
 app.get('/api/bot-info', auth, async (req, res) => {
   if (!TOKEN) return res.json({ ok:false, error:'ยังไม่ได้ตั้ง Token' });
   try {
@@ -966,9 +1006,9 @@ app.get('/api/bot-info', auth, async (req, res) => {
     res.json({ ok:true, info });
   } catch(e) { res.json({ ok:false, error:e.message }); }
 });
-
+// ─── Import Group Members API ─────────────────────────────────
 app.post('/api/import-group', auth, async (req, res) => {
-  if (!TOKEN) return res.json({ ok:false, error:'ยังไม่ได้ตั้ง LINE Token' });
+  if (!TOKEN) return res.json({ ok:false, error:'ยังไม่ได้ตั้ง LINE Token — ตั้งค่าใน Settings ก่อน' });
   const db = await readDB();
   const gid = req.body.groupId || db.defaultGroupId;
   if (!gid) return res.json({ ok:false, error:'ไม่มี groupId' });
@@ -978,7 +1018,6 @@ app.post('/api/import-group', auth, async (req, res) => {
     res.json({ ok:true, ...result });
   } catch(e) { res.json({ ok:false, error:e.message }); }
 });
-
 app.post('/api/reset', auth, async (req, res) => {
   const { what } = req.body;
   const db = await readDB();
@@ -991,39 +1030,31 @@ app.post('/api/reset', auth, async (req, res) => {
   res.json({ ok:true });
 });
 
-app.get('/health', (_, res) => res.json({ ok:true, ts:new Date().toISOString(), port:PORT, aiEnabled:!!ANTHROPIC_KEY, lineOk:!!TOKEN&&!!SECRET, mongoConnected:_mongoOk, mongoDb:_db?.databaseName||null }));
+app.get('/health', (_, res) => res.json({ ok:true, ts:new Date().toISOString(), port:PORT, aiEnabled:!!ANTHROPIC_KEY, lineOk:!!TOKEN&&!!SECRET, mongoConnected:_mongoOk }));
 app.get('/', (req, res) => res.send(DASHBOARD_HTML.replace(/__TOKEN__/g, req.query.token||'').replace(/__PORT__/g, PORT).replace(/__ADMIN_PW__/g, ADMIN_PW)));
 
 // ─── START ────────────────────────────────────────────────────
 async function start() {
-  // ── เชื่อมต่อ MongoDB ────────────────────────────────────────
   if (MONGO_URI) {
     try {
       await getMongoCol();
-      console.log('✅ MongoDB เชื่อมต่อสำเร็จ — บันทึกทุกอย่างลง MongoDB');
-      await loadCredentialsFromDB(); // โหลด LINE/AI credentials จาก DB
-    } catch(e) {
+      console.log('✅ MongoDB เชื่อมต่อสำเร็จ');
+      await loadCredentialsFromDB();
+    } catch (e) {
       console.error('❌ MongoDB เชื่อมต่อล้มเหลว:', e.message);
-      console.log('⚠️  fallback → ใช้ db.json (ข้อมูลอาจหายเมื่อ restart)');
+      console.log('⚠️  ใช้ไฟล์ db.json แทน');
     }
   } else {
-    console.log('⚠️  MONGODB_URI ไม่ได้ตั้งค่า — ใช้ db.json (ตั้งค่าใน Settings → MongoDB URI)');
+    console.log('⚠️  MONGODB_URI ไม่ได้ตั้งค่า — ใช้ไฟล์ db.json แทน');
   }
 
   app.listen(PORT, () => {
-    console.log('');
-    console.log('╔══════════════════════════════════════════╗');
-    console.log('║   Better Day v4.0 — AI Slip Edition      ║');
-    console.log('╚══════════════════════════════════════════╝');
+    console.log(`\Better Day v4.0 — AI Slip Analyzer Edition`);
     console.log(`📊 Dashboard: http://localhost:${PORT}/?token=${ADMIN_PW}`);
     console.log(`🔗 Webhook:   http://localhost:${PORT}/webhook`);
-    console.log('');
-    console.log('─── Status ───────────────────────────────');
-    console.log(_mongoOk              ? '✅ MongoDB    : เชื่อมต่อแล้ว' : '⚠️  MongoDB    : ยังไม่ได้เชื่อมต่อ');
-    console.log(SECRET                ? '✅ LINE Secret: OK'              : '⚠️  LINE Secret: ยังไม่ได้ตั้งค่า');
-    console.log(TOKEN                 ? '✅ LINE Token : OK'              : '⚠️  LINE Token : ยังไม่ได้ตั้งค่า');
-    console.log(ANTHROPIC_KEY         ? '✅ AI Key     : OK'              : '⚠️  AI Key     : ยังไม่ได้ตั้งค่า');
-    console.log('──────────────────────────────────────────');
+    console.log(SECRET ? '✅ LINE Secret OK' : '⚠️  LINE_CHANNEL_SECRET ยังไม่ได้ตั้งค่า');
+    console.log(TOKEN  ? '✅ LINE Token OK'  : '⚠️  LINE_CHANNEL_ACCESS_TOKEN ยังไม่ได้ตั้งค่า');
+    console.log(ANTHROPIC_KEY ? '✅ Anthropic AI OK (AI สลิปพร้อมใช้)' : '⚠️  ANTHROPIC_API_KEY ยังไม่ได้ตั้งค่า — AI สลิปจะไม่ทำงาน');
     console.log('');
   });
 }
@@ -1420,88 +1451,65 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
     <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Anthropic AI</div><div id="st-ai" style="font-size:11px;font-weight:600">⬜ —</div></div>
     <div style="background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;overflow:hidden"><div style="font-size:9px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Bot</div><div id="st-bot" style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⬜ —</div></div>
   </div>
-  <div class="g2">
-    <div>
-      <div class="setup-box">
-        <h3>🍃 MongoDB URI</h3>
-        <p style="font-size:11px;color:var(--muted);margin-bottom:10px">ข้อมูลทุกอย่างจะบันทึกลง MongoDB — ไม่หายเมื่อ server restart<br><a href="https://cloud.mongodb.com" target="_blank" style="color:var(--cyan)">cloud.mongodb.com</a> → Cluster → Connect → Drivers</p>
-        <div id="mongo-status-box" style="padding:7px 10px;background:var(--bg3);border-radius:6px;font-size:11px;margin-bottom:10px;color:var(--muted)">กำลังตรวจสอบ...</div>
-        <div class="fr"><label>🔗 MongoDB URI</label>
-          <div style="position:relative"><input class="inp" id="c-mongo" type="password" style="width:100%;padding-right:58px" placeholder="mongodb+srv://user:pass@cluster.mongodb.net/"><button onclick="togglePw('c-mongo')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer">👁</button></div>
-          <span style="font-size:10px;color:var(--red)">⚠️ แทนที่ &lt;password&gt; ด้วยรหัสผ่านจริงก่อนวาง</span>
-        </div>
-        <button class="tbtn gold" onclick="saveMongo()" style="width:100%;padding:9px">🍃 บันทึก + ทดสอบ MongoDB</button>
-        <div id="mongo-result" style="display:none;margin-top:8px;padding:8px;border-radius:6px;font-size:11px;background:var(--bg3)"></div>
-      </div>
-      <div class="setup-box">
-        <h3>🟢 LINE Official Account</h3>
-        <p style="font-size:11px;color:var(--muted);margin-bottom:10px"><a href="https://developers.line.biz" target="_blank" style="color:var(--cyan)">developers.line.biz</a> → Channel → Basic settings + Messaging API</p>
-        <div class="fr"><label>🔐 Channel Secret <span style="color:var(--muted);font-size:10px">(Basic settings)</span></label>
-          <div style="position:relative"><input class="inp" id="c-secret" type="password" style="width:100%;padding-right:58px" placeholder="32 ตัวอักษร..."><button onclick="togglePw('c-secret')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer">👁</button></div>
-        </div>
-        <div class="fr"><label>🎫 Channel Access Token <span style="color:var(--muted);font-size:10px">(Messaging API → Issue)</span></label>
-          <div style="position:relative"><input class="inp" id="c-token" type="password" style="width:100%;padding-right:58px" placeholder="eyJhbGci..."><button onclick="togglePw('c-token')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer">👁</button></div>
-        </div>
-        <div style="display:flex;gap:7px">
-          <button class="tbtn gold" onclick="saveCreds(true)" style="flex:2;padding:9px">💾 บันทึก + ทดสอบ LINE</button>
-          <button class="tbtn" onclick="saveCreds(false)" style="flex:1;padding:9px">บันทึก</button>
-        </div>
-        <div id="cred-result" style="display:none;margin-top:8px;padding:8px;border-radius:6px;font-size:11px;background:var(--bg3)"></div>
-      </div>
-      <div class="setup-box">
-        <h3>🤖 Anthropic API Key</h3>
-        <p style="font-size:11px;color:var(--muted);margin-bottom:10px"><a href="https://console.anthropic.com" target="_blank" style="color:var(--cyan)">console.anthropic.com</a> → API Keys → Create Key</p>
-        <div class="fr"><label>🔑 API Key</label>
-          <div style="position:relative"><input class="inp" id="c-ai" type="password" style="width:100%;padding-right:58px" placeholder="sk-ant-api03-..."><button onclick="togglePw('c-ai')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer">👁</button></div>
-        </div>
-        <button class="tbtn gold" onclick="saveAIKey()" style="width:100%;padding:9px">💾 บันทึก Anthropic Key</button>
-        <div id="ai-result" style="display:none;margin-top:8px;padding:8px;border-radius:6px;font-size:11px;background:var(--bg3)"></div>
-      </div>
-      <div class="setup-box">
-        <h3>🌐 Webhook URL</h3>
-        <div class="code-block"><span id="wh-url-text">กำลังโหลด...</span><button class="cbtn" onclick="cpWh()">copy</button></div>
-        <p style="font-size:10px;color:var(--muted);margin-top:6px">LINE → Messaging API → Webhook URL → Verify ✅ → Use webhook ON</p>
+  <div class="g2"><div>
+    <div class="setup-box"><h3>🍃 MongoDB URI</h3>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px">บันทึกทุกอย่างลง MongoDB ถาวร — <a href="https://cloud.mongodb.com" target="_blank" style="color:var(--cyan)">cloud.mongodb.com</a> → Connect → Drivers</p>
+      <div id="mongo-status-box" style="padding:7px 10px;background:var(--bg3);border-radius:6px;font-size:11px;margin-bottom:10px;color:var(--muted)">กำลังตรวจสอบ...</div>
+      <div class="fr"><label>🔗 MongoDB URI</label>
+        <div style="position:relative"><input class="inp" id="c-mongo" type="password" style="width:100%;padding-right:50px" placeholder="mongodb+srv://user:pass@cluster.mongodb.net/"><button onclick="togglePw('c-mongo')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer">👁</button></div>
+        <span style="font-size:10px;color:var(--red)">⚠️ แทนที่ &lt;password&gt; ด้วยรหัสผ่านจริงก่อนวาง</span></div>
+      <button class="tbtn gold" onclick="saveMongo()" style="width:100%;padding:9px">🍃 บันทึก + ทดสอบ</button>
+      <div id="mongo-result" style="display:none;margin-top:8px;padding:8px;border-radius:6px;font-size:11px;background:var(--bg3)"></div>
+    </div>
+    <div class="setup-box"><h3>🟢 LINE Official Account</h3>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px"><a href="https://developers.line.biz" target="_blank" style="color:var(--cyan)">developers.line.biz</a> → Channel → Basic settings + Messaging API</p>
+      <div class="fr"><label>🔐 Channel Secret</label>
+        <div style="position:relative"><input class="inp" id="c-secret" type="password" style="width:100%;padding-right:50px" placeholder="32 ตัวอักษร..."><button onclick="togglePw('c-secret')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer">👁</button></div></div>
+      <div class="fr"><label>🎫 Channel Access Token</label>
+        <div style="position:relative"><input class="inp" id="c-token" type="password" style="width:100%;padding-right:50px" placeholder="eyJhbGci..."><button onclick="togglePw('c-token')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer">👁</button></div></div>
+      <div style="display:flex;gap:7px">
+        <button class="tbtn gold" onclick="saveCreds(true)" style="flex:2;padding:9px">💾 บันทึก + ทดสอบ</button>
+        <button class="tbtn" onclick="saveCreds(false)" style="flex:1;padding:9px">บันทึก</button></div>
+      <div id="cred-result" style="display:none;margin-top:8px;padding:8px;border-radius:6px;font-size:11px;background:var(--bg3)"></div>
+    </div>
+    <div class="setup-box"><h3>🤖 Anthropic AI Key</h3>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px"><a href="https://console.anthropic.com" target="_blank" style="color:var(--cyan)">console.anthropic.com</a> → API Keys</p>
+      <div class="fr"><label>🔑 API Key</label>
+        <div style="position:relative"><input class="inp" id="c-ai" type="password" style="width:100%;padding-right:50px" placeholder="sk-ant-api03-..."><button onclick="togglePw('c-ai')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer">👁</button></div></div>
+      <button class="tbtn gold" onclick="saveAIKey()" style="width:100%;padding:9px">💾 บันทึก AI Key</button>
+      <div id="ai-result" style="display:none;margin-top:8px;padding:8px;border-radius:6px;font-size:11px;background:var(--bg3)"></div>
+    </div>
+    <div class="setup-box"><h3>🌐 Webhook URL</h3>
+      <div class="code-block"><span id="wh-url-text">กำลังโหลด...</span><button class="cbtn" onclick="cpWh()">copy</button></div>
+      <p style="font-size:10px;color:var(--muted);margin-top:6px">LINE → Messaging API → Webhook URL → Verify ✅ → Use webhook ON</p>
+    </div>
+  </div><div>
+    <div class="setup-box"><h3>⚙️ ตั้งค่าทั่วไป</h3>
+      <div class="fr"><label>ชื่อบอท</label><input class="inp" id="s-name" style="width:100%" placeholder="Better Day"></div>
+      <div class="fr"><label>เงินเริ่มต้น (บาท)</label><input class="inp" id="s-balance" type="number" style="width:100%" placeholder="0" min="0"></div>
+      <div class="fr"><label>ยอดขั้นต่ำสลิป (บาท)</label><input class="inp" id="s-slip-min" type="number" style="width:100%" placeholder="1"></div>
+      <div class="fr"><label>เติมเงินจากสลิปอัตโนมัติ</label>
+        <select class="inp" id="s-auto-slip" style="width:100%"><option value="1">✅ เปิด — เติมทันที</option><option value="0">⏳ ปิด — รอแอดมินอนุมัติ</option></select></div>
+      <div class="fr"><label>ตอบกลับอัตโนมัติ</label>
+        <select class="inp" id="s-auto-reply" style="width:100%"><option value="1">✅ เปิด</option><option value="0">🔕 ปิด</option></select></div>
+      <div class="fr"><label>Group ID หลัก</label><input class="inp" id="s-gid" style="width:100%" placeholder="C1234abc..."></div>
+      <button class="tbtn gold" onclick="saveSettings()" style="width:100%;padding:9px">💾 บันทึกการตั้งค่า</button>
+    </div>
+    <div class="setup-box"><h3>📥 Import สมาชิกกลุ่ม LINE</h3>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px">ดึงสมาชิกทุกคนเข้าระบบ (ต้องตั้ง LINE Token ก่อน)</p>
+      <div class="fr"><label>Group ID</label><input class="inp" id="import-gid" style="width:100%" placeholder="C47afe023937001e60de63834046e64a5"></div>
+      <button class="tbtn c" onclick="importGroup()" style="width:100%;padding:9px">📥 Import สมาชิกทั้งกลุ่ม</button>
+      <div id="import-result" style="display:none;margin-top:8px;padding:8px;border-radius:6px;font-size:11px;background:var(--bg3)"></div>
+    </div>
+    <div class="setup-box"><h3>♻️ จัดการข้อมูล</h3>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <button class="tbtn" onclick="resetData('logs')" style="width:100%;text-align:left">🗑 ล้าง Event Log</button>
+        <button class="tbtn" onclick="resetData('bets')" style="width:100%;text-align:left">🗑 ล้างรายการแทง</button>
+        <button class="tbtn" onclick="resetData('slips')" style="width:100%;text-align:left">🗑 ล้างประวัติสลิป</button>
+        <button class="tbtn r" onclick="resetData('all')" style="width:100%;text-align:left">⚠️ ล้างข้อมูลทั้งหมด</button>
       </div>
     </div>
-    <div>
-      <div class="setup-box">
-        <h3>⚙️ ตั้งค่าทั่วไป</h3>
-        <div class="fr"><label>ชื่อบอท</label><input class="inp" id="s-name" style="width:100%" placeholder="Better Day"></div>
-        <div class="fr"><label>เงินเริ่มต้น (บาท)</label><input class="inp" id="s-balance" type="number" style="width:100%" placeholder="0" min="0"></div>
-        <div class="fr"><label>ยอดขั้นต่ำสลิป (บาท)</label><input class="inp" id="s-slip-min" type="number" style="width:100%" placeholder="1" min="1"></div>
-        <div class="fr"><label>เติมเงินจากสลิปอัตโนมัติ</label>
-          <select class="inp" id="s-auto-slip" style="width:100%">
-            <option value="1">✅ เปิด — เติมทันที</option>
-            <option value="0">⏳ ปิด — รอแอดมินอนุมัติ</option>
-          </select>
-        </div>
-        <div class="fr"><label>ตอบกลับอัตโนมัติ</label>
-          <select class="inp" id="s-auto-reply" style="width:100%">
-            <option value="1">✅ เปิด</option>
-            <option value="0">🔕 ปิด</option>
-          </select>
-        </div>
-        <div class="fr"><label>Group ID หลัก</label><input class="inp" id="s-gid" style="width:100%" placeholder="C1234abc..."></div>
-        <button class="tbtn gold" onclick="saveSettings()" style="width:100%;padding:9px">💾 บันทึกการตั้งค่า</button>
-      </div>
-      <div class="setup-box">
-        <h3>📥 Import สมาชิกกลุ่ม LINE</h3>
-        <p style="font-size:11px;color:var(--muted);margin-bottom:10px">ดึงสมาชิกทุกคนเข้าระบบ (ต้องตั้ง LINE Token ก่อน)</p>
-        <div class="fr"><label>Group ID</label><input class="inp" id="import-gid" style="width:100%" placeholder="ว่างไว้ = ใช้ค่าเริ่มต้น"></div>
-        <button class="tbtn c" onclick="importGroup()" style="width:100%;padding:9px">📥 Import สมาชิกทั้งกลุ่ม</button>
-        <div id="import-result" style="display:none;margin-top:8px;padding:8px;border-radius:6px;font-size:11px;background:var(--bg3)"></div>
-      </div>
-      <div class="setup-box">
-        <h3>♻️ จัดการข้อมูล</h3>
-        <div style="display:flex;flex-direction:column;gap:7px">
-          <button class="tbtn" onclick="resetData('logs')" style="width:100%;text-align:left">🗑 ล้าง Event Log</button>
-          <button class="tbtn" onclick="resetData('bets')" style="width:100%;text-align:left">🗑 ล้างรายการแทง</button>
-          <button class="tbtn" onclick="resetData('slips')" style="width:100%;text-align:left">🗑 ล้างประวัติสลิป</button>
-          <button class="tbtn r" onclick="resetData('all')" style="width:100%;text-align:left">⚠️ ล้างข้อมูลทั้งหมด</button>
-        </div>
-      </div>
-    </div>
-  </div>
+  </div></div>
 </div>
 
 <!-- LOGS -->
@@ -1888,14 +1896,14 @@ async function loadCredStatus(){
   const wh=document.getElementById('wh-url-text');if(wh)wh.textContent=window.location.origin+'/webhook';
   try{
     const d=await api('/api/credentials');if(!d?.ok)return;
-    const ok=v=>\`<span style="color:var(--grn)">🟢 \${v}</span>\`;
-    const no=v=>\`<span style="color:var(--red)">🔴 \${v}</span>\`;
+    const ok=v=>\`<span style="color:var(--grn)">🟢 \${v}</span>\`,no=v=>\`<span style="color:var(--red)">🔴 \${v}</span>\`;
     const se=id=>document.getElementById(id);
-    se('st-secret').innerHTML=d.lineSecret.set?ok(d.lineSecret.preview):no('ไม่ได้ตั้งค่า');
-    se('st-token').innerHTML=d.lineToken.set?ok(d.lineToken.preview):no('ไม่ได้ตั้งค่า');
-    se('st-ai').innerHTML=d.anthropicKey.set?ok(d.anthropicKey.preview):no('ไม่ได้ตั้งค่า');
+    if(se('st-secret'))se('st-secret').innerHTML=d.lineSecret.set?ok(d.lineSecret.preview):no('ไม่ได้ตั้งค่า');
+    if(se('st-token'))se('st-token').innerHTML=d.lineToken.set?ok(d.lineToken.preview):no('ไม่ได้ตั้งค่า');
+    if(se('st-ai'))se('st-ai').innerHTML=d.anthropicKey.set?ok(d.anthropicKey.preview):no('ไม่ได้ตั้งค่า');
     if(d.runtimeActive?.token){
-      try{const bd=await api('/api/bot-info');const bi=se('st-bot');if(bi)bi.innerHTML=bd.ok&&bd.info?ok(bd.info.displayName||'OK'):no('Token ผิด');}
+      try{const bd=await api('/api/bot-info');const bi=se('st-bot');
+        if(bi)bi.innerHTML=bd.ok&&bd.info?ok(bd.info.displayName||'OK'):no('Token ผิด');}
       catch{const bi=se('st-bot');if(bi)bi.innerHTML=no('ตรวจไม่ได้');}
     }else{const bi=se('st-bot');if(bi)bi.innerHTML=no('ยังไม่ได้ตั้ง');}
   }catch(e){console.warn('loadCredStatus:',e);}
@@ -1904,25 +1912,21 @@ async function loadMongoStatus(){
   const el=document.getElementById('st-mongo'),el2=document.getElementById('mongo-status-box');
   try{
     const r=await api('/health');
-    const ok=\`<span style="color:var(--grn)">🟢 เชื่อมต่อแล้ว</span>\`;
-    const no=\`<span style="color:var(--gold)">🟡 ใช้ db.json</span>\`;
+    const ok=\`<span style="color:var(--grn)">🟢 เชื่อมต่อแล้ว</span>\`,no=\`<span style="color:var(--gold)">🟡 ใช้ db.json</span>\`;
     if(el)el.innerHTML=r.mongoConnected?ok:no;
-    if(el2)el2.innerHTML=r.mongoConnected
-      ?'<span style="color:var(--grn)">🟢 MongoDB เชื่อมต่อแล้ว — ข้อมูลบันทึกถาวร</span>'
-      :'<span style="color:var(--gold)">🟡 ยังไม่ได้เชื่อมต่อ — ข้อมูลอาจหายเมื่อ restart</span>';
-  }catch{if(el)el.textContent='⬜ ตรวจไม่ได้';}
+    if(el2)el2.innerHTML=r.mongoConnected?'<span style="color:var(--grn)">🟢 MongoDB เชื่อมต่อแล้ว — ข้อมูลบันทึกถาวร</span>':'<span style="color:var(--gold)">🟡 ยังไม่ได้เชื่อมต่อ — ข้อมูลอาจหายเมื่อ restart</span>';
+  }catch{if(document.getElementById('st-mongo'))document.getElementById('st-mongo').textContent='⬜ ตรวจไม่ได้';}
 }
 async function saveCreds(test=false){
-  const secret=document.getElementById('c-secret').value.trim();
-  const token=document.getElementById('c-token').value.trim();
+  const secret=document.getElementById('c-secret').value.trim(),token=document.getElementById('c-token').value.trim();
   if(!secret&&!token){toast('❌ กรุณากรอก Secret หรือ Token','e');return;}
   const el=document.getElementById('cred-result');el.style.display='block';el.style.color='var(--muted)';
-  el.textContent=test?'⏳ กำลังบันทึก + ทดสอบ LINE...':'⏳ กำลังบันทึก...';
+  el.textContent=test?'⏳ กำลังบันทึก + ทดสอบ...':'⏳ กำลังบันทึก...';
   const body={};if(secret)body.lineSecret=secret;if(token)body.lineToken=token;if(test)body.testConnection=true;
   const r=await api('/api/credentials',body);
   if(r?.ok){
     if(r.botInfo){const n=r.botInfo.displayName||'LINE Bot';el.style.color='var(--grn)';el.innerHTML=\`✅ เชื่อมต่อสำเร็จ! บอท: <b>\${n}</b>\`;toast('✅ LINE OA: '+n);}
-    else if(r.testError){el.style.color='var(--gold)';el.textContent='⚠️ บันทึกแล้ว Token ยังไม่ถูกต้อง: '+r.testError;}
+    else if(r.testError){el.style.color='var(--gold)';el.textContent='⚠️ บันทึกแล้ว Token ยังไม่ถูกต้อง';}
     else{el.style.color='var(--grn)';el.textContent='✅ บันทึกแล้ว';toast('✅ บันทึกสำเร็จ');}
     document.getElementById('c-secret').value='';document.getElementById('c-token').value='';loadCredStatus();
   }else{el.style.color='var(--red)';el.textContent='❌ '+(r?.error||'ไม่สำเร็จ');toast('❌ บันทึกไม่สำเร็จ','e');}
@@ -1931,15 +1935,15 @@ async function saveAIKey(){
   const ai=document.getElementById('c-ai').value.trim();if(!ai){toast('❌ กรุณาใส่ API Key','e');return;}
   const el=document.getElementById('ai-result');el.style.display='block';el.style.color='var(--muted)';el.textContent='⏳ กำลังบันทึก...';
   const r=await api('/api/credentials',{anthropicKey:ai});
-  if(r?.ok){el.style.color='var(--grn)';el.textContent='✅ AI Key บันทึกแล้ว';document.getElementById('c-ai').value='';toast('✅ Anthropic Key บันทึกแล้ว');loadCredStatus();}
+  if(r?.ok){el.style.color='var(--grn)';el.textContent='✅ AI Key บันทึกแล้ว';document.getElementById('c-ai').value='';toast('✅ Anthropic Key OK');loadCredStatus();}
   else{el.style.color='var(--red)';el.textContent='❌ '+(r?.error||'ไม่สำเร็จ');toast('❌ ไม่สำเร็จ','e');}
 }
 async function saveMongo(){
   const uri=document.getElementById('c-mongo').value.trim();if(!uri){toast('❌ กรุณาใส่ URI','e');return;}
   if(uri.includes('<password>')){toast('❌ แทนที่ <password> ก่อน','e');return;}
-  const el=document.getElementById('mongo-result');el.style.display='block';el.style.color='var(--muted)';el.textContent='⏳ กำลังทดสอบ MongoDB...';
+  const el=document.getElementById('mongo-result');el.style.display='block';el.style.color='var(--muted)';el.textContent='⏳ กำลังทดสอบ...';
   const r=await api('/api/mongo-uri',{mongoUri:uri});
-  if(r?.ok){el.style.color='var(--grn)';el.textContent='✅ MongoDB เชื่อมต่อแล้ว: '+(r.dbName||'himangkorn');document.getElementById('c-mongo').value='';toast('✅ MongoDB OK');loadMongoStatus();}
+  if(r?.ok){el.style.color='var(--grn)';el.textContent='✅ MongoDB OK: '+(r.dbName||'himangkorn');document.getElementById('c-mongo').value='';toast('✅ MongoDB OK');loadMongoStatus();}
   else{el.style.color='var(--red)';el.textContent='❌ '+(r?.error||'ไม่ได้');toast('❌ MongoDB error','e');}
 }
 async function importGroup(){
