@@ -1,0 +1,27 @@
+# render.yaml — Render deployment config
+services:
+  - type: web
+    name: maruay-bot
+    runtime: node
+    region: singapore
+    plan: free
+    buildCommand: "npm install && pip3 install Pillow --break-system-packages -q 2>/dev/null || pip install Pillow -q 2>/dev/null || true"
+    startCommand: "node migrate.js && node index.js"
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: SERVER_BASE_URL
+        sync: false

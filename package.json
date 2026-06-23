@@ -1,0 +1,24 @@
+{
+  "name": "maruay-bot",
+  "version": "4.0.0",
+  "description": "🍀 มารวย — LINE Bot + Dashboard บริหารจัดการ ครบวงจร",
+  "main": "index.js",
+  "scripts": {
+    "start": "node migrate.js && node index.js",
+    "dev": "nodemon index.js",
+    "postinstall": "pip3 install Pillow --break-system-packages -q 2>/dev/null || pip install Pillow -q 2>/dev/null || true",
+    "build": "pip install Pillow --break-system-packages -q 2>/dev/null || true"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "mongodb": "^6.21.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
