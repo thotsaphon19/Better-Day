@@ -1,0 +1,1974 @@
+<!DOCTYPE html>
+<html lang="th"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>มารวย v5 — AI Slip + Image Manager</title>
+<style>
+:root{--bg:#0c0d0b;--bg2:#161714;--bg3:#1e1f1c;--bg4:#272825;--bdr:#2a2b27;--bdr2:#393a36;--txt:#e5e2d8;--muted:#6d6b64;--gold:#c9a84c;--gold2:#e8c96a;--grn:#4a9e6a;--red:#c45252;--blu:#4a7fc0;--pur:#8b6fcc;--cyan:#3aa8a8}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt);font-size:13px;overflow:hidden;height:100vh}
+.shell{display:grid;grid-template-rows:46px 1fr;height:100vh}
+.top{background:var(--bg2);border-bottom:1px solid var(--bdr);padding:0 18px;display:flex;align-items:center;gap:10px;flex-wrap:nowrap;overflow-x:auto}
+.logo{font-size:15px;font-weight:700;color:var(--gold);white-space:nowrap;display:flex;align-items:center;gap:6px}
+.tag{font-size:10px;padding:2px 8px;border-radius:100px;font-weight:600;white-space:nowrap;flex-shrink:0}
+.tg{background:rgba(74,158,106,.15);color:var(--grn);border:1px solid rgba(74,158,106,.25)}
+.tr{background:rgba(196,82,82,.15);color:var(--red);border:1px solid rgba(196,82,82,.25)}
+.round-lbl{font-size:11px;color:var(--muted);white-space:nowrap}
+.round-num{color:var(--gold);font-weight:700}
+.spacer{flex:1;min-width:8px}
+.tbtn{padding:5px 11px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--bdr2);background:var(--bg3);color:var(--txt);white-space:nowrap;flex-shrink:0;transition:opacity .15s}
+.tbtn:hover{opacity:.75}.tbtn.gold{background:var(--gold);color:#111;border-color:var(--gold)}
+.tbtn.g{background:rgba(74,158,106,.15);color:var(--grn);border-color:rgba(74,158,106,.3)}
+.tbtn.r{background:rgba(196,82,82,.15);color:var(--red);border-color:rgba(196,82,82,.3)}
+.tbtn.c{background:rgba(58,168,168,.15);color:var(--cyan);border-color:rgba(58,168,168,.3)}
+.body{display:grid;grid-template-columns:190px 1fr;height:calc(100vh - 46px);overflow:hidden}
+.sidebar{background:var(--bg2);border-right:1px solid var(--bdr);padding:10px 5px;overflow-y:auto;display:flex;flex-direction:column}
+.nav-section{font-size:9px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;padding:10px 10px 4px;margin-top:6px}
+.nav-section:first-child{margin-top:0}
+.ni{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;cursor:pointer;color:var(--muted);font-size:12px;margin-bottom:1px;transition:all .1s;border:1px solid transparent;user-select:none}
+.ni:hover{background:var(--bg3);color:var(--txt)}.ni.on{background:rgba(201,168,76,.09);color:var(--gold);border-color:rgba(201,168,76,.12)}
+.ni .icon{font-size:14px;width:16px;text-align:center;flex-shrink:0}
+.ni .nb{margin-left:auto;background:var(--red);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:100px}
+.ni .nbc{margin-left:auto;background:var(--cyan);color:#111;font-size:9px;font-weight:700;padding:1px 5px;border-radius:100px}
+.content{overflow-y:auto;padding:16px;height:100%}
+.page{display:none}.page.on{display:block}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px}
+.kpi{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:11px 13px;cursor:default}
+.kl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.kv{font-size:20px;font-weight:700}.kg{color:var(--gold)}.kgrn{color:var(--grn)}.kblu{color:var(--blu)}.kred{color:var(--red)}.kpur{color:var(--pur)}.kcyan{color:var(--cyan)}
+.panel{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;overflow:hidden;margin-bottom:12px}
+.ph{padding:9px 13px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0}
+.ph-t{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px}
+.badge{display:inline-block;padding:2px 7px;border-radius:100px;font-size:10px;font-weight:600}
+.bb{background:rgba(74,127,192,.12);color:#4a7fc0}.bg{background:rgba(74,158,106,.12);color:#4a9e6a}
+.br{background:rgba(196,82,82,.12);color:#c45252}.bgo{background:rgba(201,168,76,.12);color:#c9a84c}
+.bm{background:var(--bg3);color:var(--muted)}.bpu{background:rgba(139,111,204,.12);color:#8b6fcc}
+.bcyan{background:rgba(58,168,168,.12);color:var(--cyan)}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;padding:8px 11px;border-bottom:1px solid var(--bdr);text-align:left;background:var(--bg3)}
+td{padding:8px 11px;border-bottom:1px solid var(--bdr);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012)}
+.ri{display:flex;align-items:center;gap:9px;padding:9px 13px;border-bottom:1px solid var(--bdr)}.ri:last-child{border-bottom:none}
+.av{width:28px;height:28px;border-radius:50%;background:rgba(201,168,76,.1);color:var(--gold);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+.inp{background:var(--bg3);border:1px solid var(--bdr2);color:var(--txt);padding:7px 10px;border-radius:6px;font-size:12px}
+.inp:focus{outline:1px solid var(--gold)}
+.fr{display:flex;flex-direction:column;gap:3px;margin-bottom:10px}
+.fr label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+.die{width:50px;height:50px;background:var(--bg3);border:1px solid var(--bdr2);border-radius:9px;font-size:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .1s;user-select:none}
+.die:hover{transform:scale(1.1)}.die:active{transform:scale(.95)}
+.spin{animation:sp .35s}@keyframes sp{0%,100%{transform:scale(1)}50%{transform:scale(.85) rotate(10deg)}}
+.die-shake{animation:shake .6s ease-in-out}
+@keyframes shake{0%{transform:rotate(0deg) scale(1)}10%{transform:rotate(-15deg) scale(1.2)}20%{transform:rotate(15deg) scale(1.3)}30%{transform:rotate(-20deg) scale(1.25)}40%{transform:rotate(20deg) scale(1.2)}50%{transform:rotate(-10deg) scale(1.1)}60%{transform:rotate(10deg) scale(1.05)}70%{transform:rotate(-5deg)}80%{transform:rotate(5deg)}90%{transform:rotate(-2deg)}100%{transform:rotate(0deg) scale(1)}}
+/* LOGIN OVERLAY */
+.login-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(8px)}
+.login-card{background:var(--bg2);border:1px solid var(--bdr2);border-radius:16px;padding:36px 40px;width:340px;max-width:92vw;text-align:center}
+.login-logo{font-size:32px;font-weight:800;color:var(--gold);margin-bottom:4px;letter-spacing:-1px}
+.login-sub{font-size:12px;color:var(--muted);margin-bottom:28px}
+.login-inp{width:100%;background:var(--bg3);border:1px solid var(--bdr2);color:var(--txt);padding:11px 14px;border-radius:8px;font-size:14px;margin-bottom:10px}
+.login-inp:focus{outline:1px solid var(--gold)}
+.login-btn{width:100%;background:var(--gold);color:#111;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px}
+.login-btn:hover{opacity:.85}
+.login-err{font-size:11px;color:var(--red);margin-top:8px;min-height:16px}
+/* USER MANAGEMENT */
+.user-card{background:var(--bg3);border:1px solid var(--bdr2);border-radius:8px;padding:12px;display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.user-av{width:36px;height:36px;border-radius:50%;background:rgba(201,168,76,.15);color:var(--gold);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0}
+.role-badge{font-size:9px;padding:2px 7px;border-radius:100px;font-weight:700}
+.role-admin{background:rgba(196,82,82,.15);color:var(--red);border:1px solid rgba(196,82,82,.3)}
+.role-mod{background:rgba(201,168,76,.15);color:var(--gold);border:1px solid rgba(201,168,76,.3)}
+.role-viewer{background:rgba(58,168,168,.15);color:var(--cyan);border:1px solid rgba(58,168,168,.3)}
+/* DICE PREVIEW in LINE style */
+.dice-preview{display:flex;gap:14px;justify-content:center;align-items:center;padding:20px;background:var(--bg3);border-radius:10px;margin:10px 0}
+.dice-face{width:60px;height:60px;background:linear-gradient(135deg,#fff 0%,#e8e8e8 100%);border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.8);display:flex;align-items:center;justify-content:center;font-size:36px;color:#111;position:relative}
+.dice-face.shaking{animation:shake .6s ease-in-out}
+.res-box{background:var(--bg3);border:1px solid var(--bdr2);border-radius:8px;padding:12px;margin-top:12px}
+.res-r{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--bdr);font-size:12px}.res-r:last-child{border-bottom:none}
+.setup-box{background:var(--bg2);border:1px solid var(--bdr);border-radius:9px;padding:16px 18px;margin-bottom:12px}
+.setup-box h3{font-size:12px;font-weight:600;color:var(--gold);margin-bottom:13px;padding-bottom:8px;border-bottom:1px solid var(--bdr)}
+.code-block{background:var(--bg3);border:1px solid var(--bdr);border-radius:6px;padding:10px 12px;font-family:monospace;font-size:11px;line-height:1.8;color:var(--txt);margin:6px 0;position:relative}
+.cbtn{position:absolute;top:6px;right:6px;padding:2px 7px;font-size:10px;border-radius:4px;border:1px solid var(--bdr2);background:var(--bg2);color:var(--muted);cursor:pointer}
+.tab-bar{display:flex;border-bottom:1px solid var(--bdr);background:var(--bg3)}
+.tab{padding:8px 14px;font-size:11px;font-weight:600;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:all .1s}
+.tab:hover{color:var(--txt)}.tab.on{color:var(--gold);border-bottom-color:var(--gold);background:var(--bg2)}
+.chat-bubble{padding:9px 12px;background:var(--bg3);border-radius:8px;margin-bottom:6px;font-size:12px;font-family:monospace;line-height:1.5;border:1px solid var(--bdr)}
+.toast{position:fixed;bottom:16px;right:16px;background:var(--bg2);border:1px solid var(--bdr2);border-radius:9px;padding:10px 14px;font-size:12px;display:none;align-items:center;gap:8px;z-index:999;max-width:300px}
+.toast.on{display:flex;animation:fi .2s}@keyframes fi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.log-r{padding:7px 13px;border-bottom:1px solid var(--bdr);font-size:11px;display:flex;gap:8px;align-items:flex-start}.log-r:last-child{border-bottom:none}
+.lt{color:var(--muted);flex-shrink:0;min-width:72px}.lm{color:var(--muted);word-break:break-all;flex:1}
+.lt-bet{color:var(--blu)}.lt-result{color:var(--gold)}.lt-open{color:var(--grn)}.lt-close{color:var(--red)}.lt-topup{color:var(--pur)}.lt-slip{color:var(--cyan)}
+/* SLIP CARD */
+.slip-card{background:var(--bg3);border:1px solid var(--bdr2);border-radius:8px;padding:12px;margin-bottom:8px}
+.slip-card.pending{border-left:3px solid var(--gold)}
+.slip-card.approved{border-left:3px solid var(--grn)}
+.slip-card.rejected{border-left:3px solid var(--red);opacity:.6}
+.slip-card.duplicate{border-left:3px solid var(--pur);opacity:.7}
+.slip-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.slip-name{font-size:12px;font-weight:600;color:var(--txt)}
+.slip-amt{font-size:16px;font-weight:700;color:var(--cyan)}
+.slip-meta{font-size:10px;color:var(--muted);line-height:1.7}
+.slip-actions{display:flex;gap:6px;margin-top:8px}
+.ai-badge{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:100px;font-size:9px;font-weight:700;background:rgba(58,168,168,.15);color:var(--cyan);border:1px solid rgba(58,168,168,.25)}
+@media(max-width:600px){.body{grid-template-columns:1fr}.sidebar{display:none}.g2,.g3{grid-template-columns:1fr}}
+</style></head><body>
+<!-- LOGIN OVERLAY -->
+<div id="login-overlay" class="login-overlay" style="display:none">
+  <div class="login-card">
+    <div class="login-logo">🍀 มารวย</div>
+    <div class="login-sub">Admin Dashboard — v5</div>
+    <input class="login-inp" id="login-pw" type="password" placeholder="รหัสผ่าน Admin" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" onclick="doLogin()">🔑 เข้าสู่ระบบ</button>
+    <div class="login-err" id="login-err"></div>
+  </div>
+</div>
+
+<div class="shell">
+
+<div class="top">
+  <div class="logo">มารวย <span style="font-size:9px;color:var(--cyan);font-weight:400">v4 AI</span></div>
+  <span class="tag tg" id="open-tag">● เปิด</span>
+  <span class="round-lbl">รอบ <span class="round-num" id="hdr-round">—</span></span>
+  <div class="spacer"></div>
+  <button class="tbtn g" onclick="quickOpen()">🟢 เปิดรอบ</button>
+  <button class="tbtn r" onclick="quickClose()">🔴 ปิดแทง</button>
+  <button class="tbtn gold" onclick="go('roll')">🎲 ออกผล</button>
+  <button class="tbtn c" onclick="go('slips')">📋 สลิป <span id="hdr-slip-badge" style="background:rgba(58,168,168,.3);padding:0 5px;border-radius:8px;font-size:10px">0</span></button>
+  <button class="tbtn" onclick="load()" title="รีเฟรช">↻</button>
+</div>
+
+<div class="body">
+
+<div class="sidebar">
+  <div class="nav-section">ภาพรวม</div>
+  <div class="ni on" onclick="go('dash',this)"><span class="icon">📊</span> Dashboard</div>
+  <div class="nav-section">เกม</div>
+  <div class="ni" onclick="go('roll',this)"><span class="icon">🎲</span> ออกผลลูกเต๋า</div>
+  <div class="ni" onclick="go('bets',this)"><span class="icon">💰</span> รายการแทง <span class="nb" id="nb-bets">0</span></div>
+  <div class="ni" onclick="go('rounds',this)"><span class="icon">📜</span> ประวัติรอบ</div>
+  <div class="nav-section">การเงิน</div>
+  <div class="ni" onclick="go('slips',this)"><span class="icon">🤖</span> AI สลิป <span class="nbc" id="nb-slips">0</span></div>
+  <div class="ni" onclick="go('players',this)"><span class="icon">👥</span> ผู้เล่นทั้งหมด</div>
+  <div class="ni" onclick="go('finance',this)"><span class="icon">💳</span> ฝาก-ถอน</div>
+  <div class="nav-section">ระบบ</div>
+  <div class="ni" onclick="go('push',this)"><span class="icon">📢</span> ส่งข้อความ LINE</div>
+  <div class="ni" onclick="go('images',this)"><span class="icon">🖼️</span> จัดการรูปภาพ <span class="nbc" id="nb-images">0</span></div>
+  <div class="ni" onclick="go('setup',this)"><span class="icon">⚙️</span> ตั้งค่า</div>
+  <div class="ni" onclick="go('users',this)"><span class="icon">👤</span> จัดการผู้ใช้</div>
+  <div class="ni" onclick="go('commands',this)"><span class="icon">📖</span> คำสั่ง LINE Bot</div>
+  <div class="ni" onclick="go('logs',this)"><span class="icon">📋</span> Event Log</div>
+</div>
+
+<div class="content">
+
+<!-- DASHBOARD -->
+<div id="p-dash" class="page on">
+  <div class="kpis">
+    <div class="kpi"><div class="kl">รอบปัจจุบัน</div><div class="kv kg" id="k-round">—</div></div>
+    <div class="kpi"><div class="kl">รอรับผล</div><div class="kv kblu" id="k-pending">0</div></div>
+    <div class="kpi"><div class="kl">ผู้เล่น</div><div class="kv" id="k-players">0</div></div>
+    <div class="kpi"><div class="kl">กำไรห้อง</div><div class="kv kgrn" id="k-profit">0</div></div>
+    <div class="kpi"><div class="kl">ฝากรวม</div><div class="kv kpur" id="k-deposit">0</div></div>
+    <div class="kpi"><div class="kl">สลิปรออนุมัติ</div><div class="kv kcyan" id="k-slip-pending">0</div></div>
+    <div class="kpi"><div class="kl">สลิปรวม</div><div class="kv kcyan" id="k-slip-total">0</div></div>
+  </div>
+  <div class="g2">
+    <div>
+      <div class="panel">
+        <div class="ph"><span class="ph-t">🎲 เดิมพันล่าสุด</span><span class="badge bb" id="d-betct">0 รอผล</span></div>
+        <table><thead><tr><th style="width:20%">ชื่อ</th><th style="width:8%">ID</th><th style="width:10%">รอบ</th><th>คำสั่ง</th><th style="width:14%">รวม</th><th style="width:14%">สถานะ</th></tr></thead>
+        <tbody id="d-bets"></tbody></table>
+      </div>
+      <div class="panel">
+        <div class="ph"><span class="ph-t">🤖 สลิปล่าสุด</span><button class="tbtn c" style="font-size:10px;padding:3px 8px" onclick="go('slips')">ดูทั้งหมด</button></div>
+        <div id="d-slips"></div>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <div class="ph"><span class="ph-t">👥 ยอดเงินผู้เล่น</span></div>
+        <div id="d-players"></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><span class="ph-t">📜 รอบล่าสุด</span></div>
+        <div id="d-rounds"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ROLL -->
+<div id="p-roll" class="page">
+  <div class="g2">
+    <div>
+      <div class="panel"><div class="ph"><span class="ph-t">🎲 ออกผลลูกเต๋า</span>
+          <button class="tbtn c" onclick="shakeAllDice()" style="font-size:10px;padding:3px 8px">🎲 เขย่า!</button>
+        </div>
+      <div style="padding:16px">
+        <div class="fr"><label>Group ID</label>
+          <input class="inp" id="r-gid" style="width:100%" placeholder="กรอก Group ID หรือดูจาก Event Log">
+        </div>
+        <div class="fr"><label>Server Base URL (สำหรับส่ง GIF ไป LINE)</label>
+          <input class="inp" id="r-baseurl" style="width:100%" placeholder="https://your-server.railway.app">
+          <span style="font-size:10px;color:var(--muted)">ต้องเป็น HTTPS สาธารณะ</span>
+        </div>
+
+        <!-- DICE PREVIEW (แบบ LINE style) -->
+        <div class="dice-preview" id="dice-preview-box">
+          <div class="dice-face" id="df1" onclick="rollOne(1)">🎲</div>
+          <div class="dice-face" id="df2" onclick="rollOne(2)">🎲</div>
+          <div class="dice-face" id="df3" onclick="rollOne(3)">🎲</div>
+        </div>
+        <div style="text-align:center;margin-bottom:10px">
+          <span style="font-size:28px;font-weight:800;color:var(--txt)" id="dsum">—</span>
+          <span style="font-size:14px;font-weight:700;margin-left:10px;padding:3px 12px;border-radius:20px" id="dlbl-badge">—</span>
+        </div>
+
+        <!-- ตั้งค่าเอง -->
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px">
+          <span style="font-size:11px;color:var(--muted);white-space:nowrap">ตั้งเอง:</span>
+          <input class="inp" id="md1" type="number" min="1" max="6" placeholder="1" style="width:52px" oninput="updDice()">
+          <input class="inp" id="md2" type="number" min="1" max="6" placeholder="2" style="width:52px" oninput="updDice()">
+          <input class="inp" id="md3" type="number" min="1" max="6" placeholder="3" style="width:52px" oninput="updDice()">
+          <span id="dlbl" style="display:none"></span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="tbtn gold" onclick="doRandom()" style="flex:1;padding:9px;font-size:12px">🎲 สุ่มทั้งหมด</button>
+          <button class="tbtn g" onclick="doManual()" style="flex:1;padding:9px;font-size:12px">✅ ยืนยันผล</button>
+        </div>
+        <div id="r-result"></div>
+        <!-- GIF Preview box -->
+        <div id="r-gif-box" style="display:none;margin-top:10px;text-align:center">
+          <div style="font-size:10px;color:var(--cyan);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">🎬 GIF Preview — จะส่งไป LINE</div>
+          <img id="r-gif-preview" style="max-width:100%;border-radius:10px;border:1px solid var(--bdr2)" alt="dice gif">
+        </div>
+
+        <div id="r-confirm-box" style="display:none;margin-top:10px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);border-radius:8px;padding:12px">
+          <div style="font-size:10px;color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">⏳ รอยืนยัน — ส่ง GIF ไปกลุ่มแล้ว พิมพ์ Y ยืนยัน / N ยกเลิก</div>
+          <div id="r-confirm-preview" style="font-family:monospace;font-size:12px;line-height:1.8;color:var(--txt)"></div>
+          <div style="display:flex;gap:6px;margin-top:10px">
+            <button class="tbtn g" onclick="confirmResult()" style="flex:1;padding:8px">✅ Y — ยืนยันออกผล</button>
+            <button class="tbtn r" onclick="cancelResult()" style="flex:1;padding:8px">❌ N — ยกเลิก</button>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <div>
+      <div class="panel"><div class="ph"><span class="ph-t">⚡ คำสั่งด่วน</span></div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:8px">
+        <div class="fr" style="margin:0">
+          <label>Group ID</label>
+          <input class="inp" id="q-gid" style="width:100%" placeholder="C1234abc...">
+        </div>
+        <button class="tbtn g" onclick="quickOpen()" style="width:100%;padding:9px;font-size:12px">🟢 เปิดรับแทง + แจ้งกลุ่ม</button>
+        <button class="tbtn r" onclick="quickClose()" style="width:100%;padding:9px;font-size:12px">🔴 ปิดรับแทง + แจ้งกลุ่ม</button>
+        <button class="tbtn c" onclick="quickScore()" style="width:100%;padding:9px;font-size:12px">📊 ส่งสกอร์ย้อนหลัง 10 รอบ</button>
+        <div style="border-top:1px solid var(--bdr);padding-top:10px;margin-top:2px">
+          <textarea class="inp" id="quick-msg" style="width:100%;height:60px;resize:none" placeholder="ข้อความที่จะส่ง..."></textarea>
+          <button class="tbtn" onclick="quickPush()" style="width:100%;margin-top:6px">📢 ส่งข้อความ</button>
+        </div>
+      </div></div>
+      <div class="panel">
+        <div class="ph"><span class="ph-t">📊 รายการแทงรอบนี้</span><span class="badge bb" id="r-betct">0</span></div>
+        <table><thead><tr><th style="width:30%">ชื่อ</th><th>คำสั่ง</th><th style="width:20%">รวม</th></tr></thead>
+        <tbody id="r-bets"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BETS -->
+<div id="p-bets" class="page">
+  <div class="tab-bar">
+    <div class="tab on" onclick="betTab(this,'all')">ทั้งหมด</div>
+    <div class="tab" onclick="betTab(this,'pending')">รอผล</div>
+    <div class="tab" onclick="betTab(this,'settled')">ออกผลแล้ว</div>
+  </div>
+  <div class="panel" style="border-top:none;border-radius:0 0 9px 9px">
+    <table><thead><tr>
+      <th style="width:16%">ชื่อ</th><th style="width:8%">ID</th><th style="width:9%">รอบ</th>
+      <th>คำสั่ง</th><th style="width:12%">รวม</th><th style="width:11%">สถานะ</th><th style="width:12%">ผล</th>
+    </tr></thead><tbody id="bets-tb"></tbody></table>
+  </div>
+</div>
+
+<!-- ROUNDS -->
+<div id="p-rounds" class="page">
+  <div class="panel">
+    <div class="ph"><span class="ph-t">📜 ประวัติรอบทั้งหมด</span></div>
+    <table><thead><tr>
+      <th style="width:12%">รอบ</th><th style="width:22%">ลูกเต๋า</th>
+      <th style="width:12%">รวม</th><th style="width:14%">ผล</th><th style="width:12%">รายการ</th><th>เวลา</th>
+    </tr></thead><tbody id="rounds-tb"></tbody></table>
+  </div>
+</div>
+
+<!-- AI SLIPS PAGE -->
+<div id="p-slips" class="page">
+  <div class="kpis" style="margin-bottom:14px">
+    <div class="kpi"><div class="kl">รออนุมัติ</div><div class="kv kg" id="sk-pending">0</div></div>
+    <div class="kpi"><div class="kl">อนุมัติแล้ว</div><div class="kv kgrn" id="sk-approved">0</div></div>
+    <div class="kpi"><div class="kl">ปฏิเสธ</div><div class="kv kred" id="sk-rejected">0</div></div>
+    <div class="kpi"><div class="kl">ยอดรวมสลิป</div><div class="kv kcyan" id="sk-total">0</div></div>
+  </div>
+  <div class="g2">
+    <div>
+      <div class="panel">
+        <div class="ph">
+          <span class="ph-t">🤖 AI วิเคราะห์สลิป <span class="ai-badge">Claude Vision</span></span>
+          <div style="display:flex;gap:6px">
+            <select class="inp" id="slip-filter" onchange="renderSlips()" style="width:100px;font-size:10px;padding:3px 6px">
+              <option value="">ทั้งหมด</option>
+              <option value="pending">รออนุมัติ</option>
+              <option value="approved">อนุมัติแล้ว</option>
+              <option value="rejected">ปฏิเสธ</option>
+              <option value="duplicate">ซ้ำ</option>
+            </select>
+            <button class="tbtn" onclick="load()" style="font-size:10px;padding:3px 8px">↻</button>
+          </div>
+        </div>
+        <div id="slip-list" style="padding:12px;max-height:65vh;overflow-y:auto"></div>
+      </div>
+    </div>
+    <div>
+      <div class="setup-box">
+        <h3>⚙️ ตั้งค่าระบบสลิป AI</h3>
+        <div class="fr">
+          <label>เติมเงินอัตโนมัติ (ไม่ต้องรอแอดมิน)</label>
+          <select class="inp" id="sl-auto" style="width:100%">
+            <option value="1">✅ เปิด — เติมทันทีอัตโนมัติ</option>
+            <option value="0">⏳ ปิด — รอแอดมินอนุมัติทุกสลิป</option>
+          </select>
+        </div>
+        <div class="fr">
+          <label>ยอดขั้นต่ำที่รับสลิป (บาท)</label>
+          <input class="inp" id="sl-min" type="number" style="width:100%" placeholder="1" min="1">
+        </div>
+        <button class="tbtn gold" onclick="saveSlipSettings()" style="width:100%;padding:8px">💾 บันทึก</button>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr)">
+          <div style="font-size:10px;color:var(--muted);line-height:1.9">
+            🤖 ระบบใช้ Claude Vision วิเคราะห์:<br>
+            • ยอดโอนเงิน<br>
+            • ชื่อผู้โอน / ผู้รับ<br>
+            • ธนาคาร + เลข Ref<br>
+            • จับคู่ชื่อผู้เล่นอัตโนมัติ<br>
+            • ตรวจสลิปซ้ำ (Ref No.)
+          </div>
+        </div>
+      </div>
+      <div class="setup-box">
+        <h3>🔑 ANTHROPIC_API_KEY</h3>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:8px">ต้องตั้งใน .env เพื่อให้ AI วิเคราะห์สลิปได้</p>
+        <div class="code-block">ANTHROPIC_API_KEY=<span style="color:var(--cyan)">sk-ant-...</span>
+<button class="cbtn" onclick="cpCode(this)">copy</button></div>
+        <div id="ai-status" style="margin-top:8px;font-size:11px;color:var(--muted)">กำลังตรวจสอบ...</div>
+      </div>
+      <div class="setup-box">
+        <h3>🗑 จัดการข้อมูลสลิป</h3>
+        <button class="tbtn r" onclick="resetData('slips')" style="width:100%;text-align:left">🗑 ล้างประวัติสลิปทั้งหมด</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PLAYERS -->
+<div id="p-players" class="page">
+  <div class="panel">
+    <div class="ph"><span class="ph-t">👥 ผู้เล่นทั้งหมด</span><span class="badge bm" id="pl-count">0 คน</span></div>
+    <table><thead><tr>
+      <th style="width:7%">ID</th><th style="width:22%">ชื่อ</th><th style="width:17%">เงินคงเหลือ</th>
+      <th style="width:13%">แทงรวม</th><th style="width:12%">ชนะ</th><th style="width:12%">แพ้</th><th style="width:15%">จัดการ</th>
+    </tr></thead><tbody id="players-tb"></tbody></table>
+  </div>
+</div>
+
+<!-- FINANCE -->
+<div id="p-finance" class="page">
+  <div class="g2">
+    <div>
+      <div class="panel"><div class="ph"><span class="ph-t">💰 เติม/ถอนเงิน</span></div>
+      <div style="padding:14px">
+        <div class="fr"><label>ค้นหาผู้เล่น (ชื่อ / ID)</label>
+          <input class="inp" id="fin-search" style="width:100%" oninput="searchPlayer()" placeholder="พิมพ์ชื่อหรือ ID...">
+        </div>
+        <div id="fin-player-result"></div>
+        <div style="border-top:1px solid var(--bdr);padding-top:12px;margin-top:4px">
+          <div class="fr"><label>จำนวนเงิน</label><input class="inp" id="fin-amt" type="number" style="width:100%" placeholder="จำนวนเงิน"></div>
+          <div style="display:flex;gap:6px">
+            <button class="tbtn g" onclick="doTopup()" style="flex:1;padding:8px">💰 เติมเงิน</button>
+            <button class="tbtn r" onclick="doWithdraw()" style="flex:1;padding:8px">💸 ถอนเงิน</button>
+          </div>
+          <div style="margin-top:8px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer">
+              <input type="checkbox" id="fin-notify"> แจ้ง LINE ผู้เล่น
+            </label>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <div>
+      <div class="panel"><div class="ph"><span class="ph-t">📋 ประวัติฝาก-ถอน</span></div>
+        <table><thead><tr><th style="width:24%">ชื่อ</th><th style="width:18%">จำนวน</th><th style="width:18%">ประเภท</th><th>เวลา</th></tr></thead>
+        <tbody id="fin-tb"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PUSH -->
+<div id="p-push" class="page">
+  <div class="g2">
+    <div>
+      <div class="panel"><div class="ph"><span class="ph-t">📢 ส่งข้อความ LINE</span></div>
+      <div style="padding:14px">
+        <div class="fr"><label>ปลายทาง</label>
+          <input class="inp" id="push-to" style="width:100%" placeholder="C1234... หรือ U1234...">
+        </div>
+        <div class="fr"><label>ข้อความ</label>
+          <textarea class="inp" id="push-msg" style="height:100px;resize:vertical;width:100%" placeholder="ข้อความที่จะส่ง..."></textarea>
+        </div>
+        <button class="tbtn gold" onclick="doPush()" style="width:100%;padding:9px">📢 ส่งข้อความ</button>
+      </div></div>
+    </div>
+    <div>
+      <div class="panel"><div class="ph"><span class="ph-t">📋 Group ID ที่รู้จัก</span></div>
+        <div id="known-groups" style="padding:12px;font-size:12px;color:var(--muted)">โหลด...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SETUP -->
+<div id="p-setup" class="page">
+  <!-- STATUS BAR -->
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">
+    <div class="kpi"><div class="kl">MongoDB</div><div id="st-mongo" style="font-size:12px;font-weight:600;margin-top:4px">⬜ —</div></div>
+    <div class="kpi"><div class="kl">LINE Secret</div><div id="st-secret" style="font-size:12px;font-weight:600;margin-top:4px">⬜ —</div></div>
+    <div class="kpi"><div class="kl">LINE Token</div><div id="st-token" style="font-size:12px;font-weight:600;margin-top:4px">⬜ —</div></div>
+    <div class="kpi"><div class="kl">Anthropic AI</div><div id="st-ai" style="font-size:12px;font-weight:600;margin-top:4px">⬜ —</div></div>
+    <div class="kpi"><div class="kl">Bot Name</div><div id="st-bot" style="font-size:12px;font-weight:600;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⬜ —</div></div>
+  </div>
+
+  <div class="g2">
+    <div>
+      <!-- MongoDB -->
+      <div class="setup-box">
+        <h3>🍃 MongoDB — บันทึกข้อมูลถาวร</h3>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:10px">
+          <a href="https://cloud.mongodb.com" target="_blank" style="color:var(--cyan)">cloud.mongodb.com</a>
+          → Cluster → Connect → Drivers → Copy string → แทนที่ &lt;password&gt;
+        </p>
+        <div id="mongo-status-box" style="padding:8px 10px;background:var(--bg3);border-radius:6px;font-size:11px;margin-bottom:10px">กำลังตรวจสอบ...</div>
+        <div class="fr"><label>🔗 MongoDB URI</label>
+          <div style="position:relative">
+            <input class="inp" id="c-mongo" type="password" style="width:100%;padding-right:52px"
+              placeholder="mongodb+srv://user:password@cluster.mongodb.net/himangkorn">
+            <button onclick="togglePw('c-mongo')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">👁</button>
+          </div>
+          <span style="font-size:10px;color:var(--red)">⚠️ ต้องแทนที่ &lt;password&gt; ด้วยรหัสผ่านจริงก่อนกด</span>
+        </div>
+        <button class="tbtn gold" onclick="saveMongo()" style="width:100%;padding:9px">🍃 บันทึก + ทดสอบ MongoDB</button>
+        <div id="mongo-result" style="display:none;margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:6px;font-size:11px"></div>
+      </div>
+
+      <!-- LINE OA -->
+      <div class="setup-box">
+        <h3>🟢 LINE Official Account</h3>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:10px">
+          <a href="https://developers.line.biz" target="_blank" style="color:var(--cyan)">developers.line.biz</a>
+          → Channel → Basic settings + Messaging API
+        </p>
+        <div class="fr"><label>🔐 Channel Secret <span style="color:var(--muted);font-weight:400">(Basic settings)</span></label>
+          <div style="position:relative">
+            <input class="inp" id="c-secret" type="password" style="width:100%;padding-right:52px" placeholder="32 ตัวอักษร...">
+            <button onclick="togglePw('c-secret')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">👁</button>
+          </div>
+        </div>
+        <div class="fr"><label>🎫 Channel Access Token <span style="color:var(--muted);font-weight:400">(Messaging API → Issue)</span></label>
+          <div style="position:relative">
+            <input class="inp" id="c-token" type="password" style="width:100%;padding-right:52px" placeholder="eyJhbGci...">
+            <button onclick="togglePw('c-token')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">👁</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:7px">
+          <button class="tbtn gold" onclick="saveCreds(true)" style="flex:2;padding:9px">💾 บันทึก + ทดสอบ LINE</button>
+          <button class="tbtn" onclick="saveCreds(false)" style="flex:1;padding:9px">บันทึก</button>
+        </div>
+        <div id="cred-result" style="display:none;margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:6px;font-size:11px"></div>
+      </div>
+
+      <!-- AI Key -->
+      <div class="setup-box">
+        <h3>🤖 Anthropic AI Key</h3>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:10px">
+          <a href="https://console.anthropic.com" target="_blank" style="color:var(--cyan)">console.anthropic.com</a>
+          → API Keys → Create Key
+        </p>
+        <div class="fr"><label>🔑 API Key</label>
+          <div style="position:relative">
+            <input class="inp" id="c-ai" type="password" style="width:100%;padding-right:52px" placeholder="sk-ant-api03-...">
+            <button onclick="togglePw('c-ai')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px">👁</button>
+          </div>
+        </div>
+        <button class="tbtn gold" onclick="saveAIKey()" style="width:100%;padding:9px">💾 บันทึก AI Key</button>
+        <div id="ai-result" style="display:none;margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:6px;font-size:11px"></div>
+      </div>
+
+      <!-- Webhook -->
+      <div class="setup-box">
+        <h3>🌐 Webhook URL</h3>
+        <div class="code-block" style="word-break:break-all">
+          <span id="wh-url-text">กำลังโหลด...</span>
+          <button class="cbtn" onclick="cpWh()">copy</button>
+        </div>
+        <p style="font-size:10px;color:var(--muted);margin-top:6px">
+          LINE → Messaging API → Webhook URL → Verify ✅ → Use webhook ON
+        </p>
+      </div>
+    </div>
+
+    <div>
+      <!-- ตั้งค่าทั่วไป -->
+      <div class="setup-box">
+        <h3>⚙️ ตั้งค่าทั่วไป</h3>
+        <div class="fr"><label>ชื่อบอท</label>
+          <input class="inp" id="s-name" style="width:100%" placeholder="มารวย">
+        </div>
+        <div class="fr"><label>เงินเริ่มต้น (บาท)</label>
+          <input class="inp" id="s-balance" type="number" style="width:100%" placeholder="0" min="0">
+        </div>
+        <div class="fr"><label>ยอดขั้นต่ำสลิป (บาท)</label>
+          <input class="inp" id="s-slip-min" type="number" style="width:100%" placeholder="1" min="1">
+        </div>
+        <div class="fr"><label>เติมเงินจากสลิปอัตโนมัติ</label>
+          <select class="inp" id="s-auto-slip" style="width:100%">
+            <option value="1">✅ เปิด — เติมทันที</option>
+            <option value="0">⏳ ปิด — รอแอดมินอนุมัติ</option>
+          </select>
+        </div>
+        <div class="fr"><label>ตอบกลับอัตโนมัติ (LINE)</label>
+          <select class="inp" id="s-auto-reply" style="width:100%">
+            <option value="1">✅ เปิด</option>
+            <option value="0">🔕 ปิด</option>
+          </select>
+        </div>
+        <div class="fr"><label>Group ID หลัก</label>
+          <input class="inp" id="s-gid" style="width:100%" placeholder="C47afe023937001e60de63834046e64a5">
+        </div>
+        <div class="fr"><label>URL เซิร์ฟเวอร์ (สำหรับส่งรูปไป LINE)</label>
+          <input class="inp" id="s-baseurl" style="width:100%" placeholder="https://your-server.railway.app">
+          <span style="font-size:10px;color:var(--muted)">ต้องเป็น HTTPS สาธารณะเพื่อให้ LINE โหลดรูปได้</span>
+        </div>
+        <button class="tbtn gold" onclick="saveSettings()" style="width:100%;padding:9px">💾 บันทึกการตั้งค่า</button>
+      </div>
+
+      <!-- ตรวจสอบสลิป -->
+      <div class="setup-box">
+        <h3>🛡 ตรวจสอบสลิปขั้นสูง</h3>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:12px">ป้องกันสลิปปลอม / บัญชีไม่ตรง / สลิปเก่า</p>
+        <div class="fr"><label>ชื่อบัญชีปลายทางที่ถูกต้อง</label>
+          <input class="inp" id="s-receiver-name" style="width:100%" placeholder="เช่น นายสมชาย ใจดี">
+          <span style="font-size:10px;color:var(--muted)">AI จะตรวจว่าสลิปโอนมาที่บัญชีนี้จริงหรือไม่</span>
+        </div>
+        <div class="fr"><label>ธนาคารปลายทาง (ไม่บังคับ)</label>
+          <input class="inp" id="s-receiver-bank" style="width:100%" placeholder="เช่น กสิกรไทย, ไทยพาณิชย์">
+        </div>
+        <div class="fr"><label>บังคับตรวจชื่อบัญชีปลายทาง</label>
+          <select class="inp" id="s-require-receiver" style="width:100%">
+            <option value="0">❌ ปิด — ไม่บังคับ (แนะนำตอนเริ่มต้น)</option>
+            <option value="1">✅ เปิด — ปฏิเสธถ้าบัญชีไม่ตรง</option>
+          </select>
+        </div>
+        <div class="fr"><label>อายุสลิปสูงสุด (นาที, 0=ไม่จำกัด)</label>
+          <input class="inp" id="s-slip-age" type="number" style="width:100%" placeholder="60" min="0">
+          <span style="font-size:10px;color:var(--muted)">เช่น 60 = ปฏิเสธสลิปที่โอนนานกว่า 1 ชั่วโมง</span>
+        </div>
+        <button class="tbtn gold" onclick="saveSettings()" style="width:100%;padding:9px">💾 บันทึกการตั้งค่า</button>
+        <div style="margin-top:12px;background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.15);border-radius:6px;padding:10px;font-size:10px;color:var(--muted);line-height:1.9">
+          🛡 AI ตรวจสอบอัตโนมัติ:<br>
+          • <span style="color:var(--red)">สลิปปลอม / แก้ไข</span> — ปฏิเสธทันที<br>
+          • <span style="color:var(--red)">บัญชีปลายทางไม่ตรง</span> — ปฏิเสธ + แจ้งบัญชีที่ถูก<br>
+          • <span style="color:var(--red)">สลิปเก่าเกินกำหนด</span> — ปฏิเสธ + แจ้งเวลาในสลิป<br>
+          • <span style="color:var(--gold)">Ref ซ้ำ</span> — ปฏิเสธ (กันใช้สลิปซ้ำ)<br>
+          • <span style="color:var(--grn)">ผ่านทุกข้อ</span> — เติมเงินอัตโนมัติทันที
+        </div>
+      </div>
+
+      <!-- Import กลุ่ม -->
+      <div class="setup-box">
+        <h3>📥 Import สมาชิกกลุ่ม LINE</h3>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:10px">ดึงสมาชิกทุกคนในกลุ่มเข้าระบบ (ต้องตั้ง LINE Token ก่อน)</p>
+        <div class="fr"><label>Group ID</label>
+          <input class="inp" id="import-gid" style="width:100%" placeholder="C47afe023937001e60de63834046e64a5">
+        </div>
+        <button class="tbtn c" onclick="importGroup()" style="width:100%;padding:9px">📥 Import สมาชิกทั้งกลุ่ม</button>
+        <div id="import-result" style="display:none;margin-top:8px;padding:8px 10px;background:var(--bg3);border-radius:6px;font-size:11px"></div>
+      </div>
+
+      <!-- จัดการข้อมูล -->
+      <div class="setup-box">
+        <h3>♻️ จัดการข้อมูล</h3>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <button class="tbtn" onclick="resetData('logs')" style="width:100%;text-align:left">🗑 ล้าง Event Log</button>
+          <button class="tbtn" onclick="resetData('bets')" style="width:100%;text-align:left">🗑 ล้างรายการแทง</button>
+          <button class="tbtn" onclick="resetData('slips')" style="width:100%;text-align:left">🗑 ล้างประวัติสลิป</button>
+          <button class="tbtn r" onclick="resetData('all')" style="width:100%;text-align:left">⚠️ ล้างข้อมูลทั้งหมด</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- IMAGE MANAGEMENT PAGE -->
+<div id="p-images" class="page">
+  <div class="kpis" style="margin-bottom:14px">
+    <div class="kpi"><div class="kl">รูปทั้งหมด</div><div class="kv kg" id="ik-total">0</div></div>
+    <div class="kpi"><div class="kl">ประกาศเกม</div><div class="kv kblu" id="ik-announce">0</div></div>
+    <div class="kpi"><div class="kl">อัตราจ่าย</div><div class="kv kpur" id="ik-payout">0</div></div>
+    <div class="kpi"><div class="kl">กติกา</div><div class="kv kcyan" id="ik-rules">0</div></div>
+  </div>
+  <div class="g2">
+    <div>
+      <!-- อัพโหลดรูปใหม่ -->
+      <div class="panel">
+        <div class="ph"><span class="ph-t">📤 อัพโหลดรูปภาพใหม่</span></div>
+        <div style="padding:14px">
+          <div class="fr"><label>ชื่อรูป</label>
+            <input class="inp" id="img-name" style="width:100%" placeholder="เช่น รูปประกาศเริ่มแทง">
+          </div>
+          <div class="fr"><label>หมวดหมู่</label>
+            <select class="inp" id="img-cat" style="width:100%">
+              <option value="announce">📢 ประกาศเกม (เริ่มแทง/หยุด/ผล)</option>
+              <option value="payout">💰 อัตราจ่าย</option>
+              <option value="rules">📋 กติกา/วิธีเล่น</option>
+              <option value="score">📊 สกอร์ย้อนหลัง</option>
+              <option value="promo">🎁 โปรโมชั่น</option>
+              <option value="general">📁 ทั่วไป</option>
+            </select>
+          </div>
+          <div class="fr"><label>แท็ก (ค้นหาได้ง่าย)</label>
+            <input class="inp" id="img-tag" style="width:100%" placeholder="เช่น เริ่มแทง, หยุด, อัตราจ่าย">
+          </div>
+          <div class="fr"><label>เลือกรูปภาพ</label>
+            <input type="file" id="img-file" accept="image/*" style="width:100%;color:var(--txt);background:var(--bg3);border:1px solid var(--bdr2);border-radius:6px;padding:6px" onchange="previewImg(this)">
+          </div>
+          <div id="img-preview" style="display:none;margin-bottom:10px">
+            <img id="img-preview-el" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--bdr2)">
+          </div>
+          <button class="tbtn gold" onclick="uploadImage()" style="width:100%;padding:9px">📤 อัพโหลดรูป</button>
+          <div id="img-upload-result" style="margin-top:8px;font-size:11px"></div>
+        </div>
+      </div>
+
+      <!-- ส่งรูปไปกลุ่ม LINE -->
+      <div class="panel">
+        <div class="ph"><span class="ph-t">📢 ส่งรูปไปกลุ่ม LINE</span></div>
+        <div style="padding:14px">
+          <div class="fr"><label>เลือกรูปที่จะส่ง</label>
+            <select class="inp" id="send-img-id" style="width:100%" onchange="onSendImgChange()">
+              <option value="">-- เลือกรูป --</option>
+            </select>
+          </div>
+          <div id="send-img-preview" style="margin-bottom:10px;display:none">
+            <img id="send-img-el" style="max-width:100%;max-height:150px;border-radius:8px;border:1px solid var(--bdr2)">
+          </div>
+          <div class="fr"><label>Group ID ปลายทาง</label>
+            <input class="inp" id="send-img-gid" style="width:100%" placeholder="C47afe...">
+          </div>
+          <div class="fr"><label>ข้อความประกอบ (ไม่บังคับ)</label>
+            <textarea class="inp" id="send-img-caption" style="width:100%;height:60px;resize:none" placeholder="ข้อความที่จะส่งพร้อมรูป..."></textarea>
+          </div>
+          <div class="fr"><label>URL เซิร์ฟเวอร์ (สำหรับส่งรูป)</label>
+            <input class="inp" id="send-base-url" style="width:100%" placeholder="https://your-server.railway.app">
+            <span style="font-size:10px;color:var(--muted)">ต้องเป็น HTTPS สาธารณะเพื่อให้ LINE โหลดรูปได้</span>
+          </div>
+          <button class="tbtn gold" onclick="sendImageToLine()" style="width:100%;padding:9px">📤 ส่งรูปไป LINE</button>
+          <div id="send-img-result" style="margin-top:8px;font-size:11px"></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <!-- คลังรูปภาพ -->
+      <div class="panel">
+        <div class="ph">
+          <span class="ph-t">🗂️ คลังรูปภาพทั้งหมด</span>
+          <div style="display:flex;gap:6px">
+            <select class="inp" id="img-filter-cat" onchange="renderImages()" style="width:110px;font-size:10px;padding:3px 6px">
+              <option value="">ทั้งหมด</option>
+              <option value="announce">ประกาศเกม</option>
+              <option value="payout">อัตราจ่าย</option>
+              <option value="rules">กติกา</option>
+              <option value="score">สกอร์</option>
+              <option value="promo">โปรโมชั่น</option>
+              <option value="general">ทั่วไป</option>
+            </select>
+            <button class="tbtn" onclick="load()" style="font-size:10px;padding:3px 8px">↻</button>
+          </div>
+        </div>
+        <div id="img-gallery" style="padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;max-height:65vh;overflow-y:auto">
+          <div style="color:var(--muted);text-align:center;padding:24px;grid-column:1/-1">โหลด...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- COMMANDS CHEAT SHEET -->
+<div id="p-commands" class="page">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+    <!-- ผู้เล่น ทั่วไป -->
+    <div>
+      <div class="setup-box">
+        <h3>👤 คำสั่งสำหรับ ผู้เล่น (พิมพ์ในกลุ่ม LINE)</h3>
+        <table style="width:100%;font-size:11px">
+          <thead><tr>
+            <th style="background:var(--bg4);padding:6px 8px;text-align:left;color:var(--gold)">พิมพ์</th>
+            <th style="background:var(--bg4);padding:6px 8px;text-align:left;color:var(--muted)">ทำอะไร</th>
+            <th style="background:var(--bg4);padding:6px 8px;text-align:left;color:var(--muted)">ตัวอย่าง</th>
+          </tr></thead>
+          <tbody>
+            <tr><td style="padding:5px 8px;color:var(--cyan);font-family:monospace">ยอด</td><td style="padding:5px 8px">ดูเงินคงเหลือ</td><td style="padding:5px 8px;color:var(--muted)">—</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--cyan);font-family:monospace">อันดับ</td><td style="padding:5px 8px">ดู Top 10</td><td style="padding:5px 8px;color:var(--muted)">—</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--cyan);font-family:monospace">สกอร์</td><td style="padding:5px 8px">ผลย้อนหลัง 10 รอบ</td><td style="padding:5px 8px;color:var(--muted)">—</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--cyan);font-family:monospace">วิธีแทง</td><td style="padding:5px 8px">ดูคำสั่งทั้งหมด</td><td style="padding:5px 8px;color:var(--muted)">—</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--cyan);font-family:monospace">ชื่อ [ชื่อใหม่]</td><td style="padding:5px 8px">เปลี่ยนชื่อตัวเอง</td><td style="padding:5px 8px;color:var(--muted)">ชื่อ สมชาย</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="setup-box">
+        <h3>🎲 คำสั่งแทง (พิมพ์ในกลุ่ม LINE)</h3>
+        <table style="width:100%;font-size:11px">
+          <thead><tr>
+            <th style="background:var(--bg4);padding:6px 8px;text-align:left;color:var(--gold)">รูปแบบ</th>
+            <th style="background:var(--bg4);padding:6px 8px;text-align:left;color:var(--muted)">ความหมาย</th>
+            <th style="background:var(--bg4);padding:6px 8px;text-align:left;color:var(--muted)">ตัวอย่าง</th>
+          </tr></thead>
+          <tbody>
+            <tr><td style="padding:5px 8px;color:var(--grn);font-family:monospace">สูง=100</td><td style="padding:5px 8px">แทงสูง 100 บาท</td><td style="padding:5px 8px;color:var(--muted)">สูง=100 ต่ำ=200</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--grn);font-family:monospace">ต่ำ=100</td><td style="padding:5px 8px">แทงต่ำ 100 บาท</td><td style="padding:5px 8px;color:var(--muted)">—</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--grn);font-family:monospace">คู่=100</td><td style="padding:5px 8px">แทงคู่ 100 บาท</td><td style="padding:5px 8px;color:var(--muted)">—</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--grn);font-family:monospace">คี่=100</td><td style="padding:5px 8px">แทงคี่ 100 บาท</td><td style="padding:5px 8px;color:var(--muted)">—</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--grn);font-family:monospace">9=200</td><td style="padding:5px 8px">แทงผลรวม 9</td><td style="padding:5px 8px;color:var(--muted)">จ่าย ×6</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--grn);font-family:monospace">45=100</td><td style="padding:5px 8px">แทงคู่ตาย 4-5</td><td style="padding:5px 8px;color:var(--muted)">จ่าย ×5</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--grn);font-family:monospace">456=50</td><td style="padding:5px 8px">แทงสามตัว 4-5-6</td><td style="padding:5px 8px;color:var(--muted)">จ่าย ×7</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--grn);font-family:monospace">444=100</td><td style="padding:5px 8px">แทงต๊อก 4-4-4</td><td style="padding:5px 8px;color:var(--muted)">จ่าย ×10</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--grn);font-family:monospace">6ส=100</td><td style="padding:5px 8px">แทงตัวสูง เลข 6</td><td style="padding:5px 8px;color:var(--muted)">จ่าย ×2</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--grn);font-family:monospace">เพิ่ม สูง=50</td><td style="padding:5px 8px">เพิ่มเดิมพัน</td><td style="padding:5px 8px;color:var(--muted)">—</td></tr>
+          </tbody>
+        </table>
+        <div style="margin-top:8px;padding:8px;background:rgba(74,158,106,.07);border-radius:6px;font-size:10px;color:var(--muted);line-height:1.9">
+          💡 แทงหลายรายการในข้อความเดียวได้<br>
+          ตัวอย่าง: <span style="color:var(--cyan);font-family:monospace">สูง=100 คี่=50 9=200</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- แอดมิน -->
+    <div>
+      <div class="setup-box">
+        <h3>🔑 คำสั่งแอดมิน (พิมพ์ในกลุ่ม LINE)</h3>
+        <table style="width:100%;font-size:11px">
+          <thead><tr>
+            <th style="background:var(--bg4);padding:6px 8px;text-align:left;color:var(--gold)">พิมพ์</th>
+            <th style="background:var(--bg4);padding:6px 8px;text-align:left;color:var(--muted)">ทำอะไร</th>
+          </tr></thead>
+          <tbody>
+            <tr><td style="padding:5px 8px;color:var(--gold);font-family:monospace">เปิด</td><td style="padding:5px 8px">เปิดรับแทงรอบปัจจุบัน</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--gold);font-family:monospace">เปิดที่ 200</td><td style="padding:5px 8px">เปิดรับแทง กำหนดรอบ</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--red);font-family:monospace">ปิด</td><td style="padding:5px 8px">ปิดรับแทง</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--gold);font-family:monospace">สุ่ม</td><td style="padding:5px 8px">สุ่มลูกเต๋า (รอ Y ยืนยัน)</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--gold);font-family:monospace">ผล 6 5 3</td><td style="padding:5px 8px">ตั้งผลเอง (รอ Y ยืนยัน)</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--grn);font-family:monospace">Y</td><td style="padding:5px 8px">ยืนยันออกผล ✅</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--red);font-family:monospace">N</td><td style="padding:5px 8px">ยกเลิก ไม่ออกผล ❌</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--pur);font-family:monospace">เติม สมชาย 500</td><td style="padding:5px 8px">เติมเงินให้ผู้เล่น</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--pur);font-family:monospace">ถอน สมชาย 200</td><td style="padding:5px 8px">ถอนเงินจากผู้เล่น</td></tr>
+            <tr><td style="padding:5px 8px;color:var(--cyan);font-family:monospace">สกอร์</td><td style="padding:5px 8px">ส่งสกอร์ย้อนหลังในกลุ่ม</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="setup-box">
+        <h3>🤖 ระบบอัตโนมัติ (บอททำเอง)</h3>
+        <div style="font-size:11px;line-height:2">
+          📸 <b>ส่งสลิป</b> → AI วิเคราะห์ + เติมเงินอัตโนมัติ<br>
+          🔔 <b>คนเข้ากลุ่ม</b> → สมัครสมาชิกอัตโนมัติ<br>
+          🎲 <b>หลังออกผล</b> → ส่งตารางสรุปรอบ Flex Message<br>
+          💳 <b>เงินไม่พอ</b> → บอทแจ้ง พร้อมยอดที่ต้องการ<br>
+          ⚠️ <b>สลิปปลอม/ซ้ำ/เก่า</b> → ปฏิเสธ + แจ้งเหตุผล<br>
+        </div>
+      </div>
+
+      <div class="setup-box">
+        <h3>📤 ทดสอบส่งคำสั่งไปกลุ่ม</h3>
+        <div class="fr"><label>Group ID ปลายทาง</label>
+          <input class="inp" id="cmd-gid" style="width:100%" placeholder="C47afe...">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+          <button class="tbtn g"  onclick="sendCmd('เปิด')">🟢 เปิดรอบ</button>
+          <button class="tbtn r"  onclick="sendCmd('ปิด')">🔴 ปิดแทง</button>
+          <button class="tbtn gold" onclick="sendCmd('สุ่ม')">🎲 สุ่มลูกเต๋า</button>
+          <button class="tbtn c"  onclick="sendCmd('สกอร์')">📊 ส่งสกอร์</button>
+          <button class="tbtn"    onclick="sendCmd('วิธีแทง')">📋 วิธีแทง</button>
+          <button class="tbtn"    onclick="sendCmd('อันดับ')">🏆 อันดับ</button>
+        </div>
+        <div class="fr" style="margin-bottom:6px"><label>หรือพิมพ์คำสั่งเอง</label>
+          <div style="display:flex;gap:6px">
+            <input class="inp" id="cmd-custom" style="flex:1" placeholder="เช่น เติม สมชาย 500">
+            <button class="tbtn gold" onclick="sendCustomCmd()">ส่ง</button>
+          </div>
+        </div>
+        <div id="cmd-result" style="font-size:11px;margin-top:6px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- USERS MANAGEMENT PAGE -->
+<div id="p-users" class="page">
+  <div class="g2">
+    <div>
+      <!-- สร้าง user ใหม่ -->
+      <div class="setup-box">
+        <h3>➕ เพิ่ม Admin User ใหม่</h3>
+        <div class="fr"><label>ชื่อผู้ใช้</label>
+          <input class="inp" id="nu-name" style="width:100%" placeholder="ชื่อที่แสดง เช่น ผู้ดูแล1">
+        </div>
+        <div class="fr"><label>Username (ใช้ login)</label>
+          <input class="inp" id="nu-user" style="width:100%" placeholder="เช่น admin2" autocomplete="off">
+        </div>
+        <div class="fr"><label>รหัสผ่าน</label>
+          <input class="inp" id="nu-pw" type="password" style="width:100%" placeholder="รหัสผ่าน" autocomplete="new-password">
+        </div>
+        <div class="fr"><label>สิทธิ์การใช้งาน</label>
+          <select class="inp" id="nu-role" style="width:100%">
+            <option value="admin">🔴 Admin — เข้าถึงทุกอย่าง</option>
+            <option value="mod">🟡 Moderator — ออกผล/เปิดปิดรอบได้ ไม่แก้ตั้งค่า</option>
+            <option value="viewer">🔵 Viewer — ดูข้อมูลอย่างเดียว</option>
+          </select>
+        </div>
+        <button class="tbtn gold" onclick="createUser()" style="width:100%;padding:9px">➕ สร้างผู้ใช้</button>
+        <div id="nu-result" style="margin-top:8px;font-size:11px"></div>
+      </div>
+
+      <!-- โปรไฟล์ผู้ใช้ปัจจุบัน -->
+      <div class="setup-box">
+        <h3>👤 โปรไฟล์ของฉัน</h3>
+        <div id="my-profile" style="font-size:12px;line-height:2;color:var(--muted)">
+          <div>ชื่อ: <span id="my-name" style="color:var(--txt)">—</span></div>
+          <div>Username: <span id="my-username" style="color:var(--txt)">—</span></div>
+          <div>สิทธิ์: <span id="my-role" style="color:var(--gold)">—</span></div>
+          <div>เข้าใช้ล่าสุด: <span id="my-last" style="color:var(--muted)">—</span></div>
+        </div>
+        <div style="margin-top:12px;border-top:1px solid var(--bdr);padding-top:12px">
+          <div class="fr"><label>เปลี่ยนรหัสผ่านใหม่</label>
+            <input class="inp" id="my-newpw" type="password" style="width:100%" placeholder="รหัสผ่านใหม่">
+          </div>
+          <div class="fr"><label>ยืนยันรหัสผ่านใหม่</label>
+            <input class="inp" id="my-confirmpw" type="password" style="width:100%" placeholder="ยืนยันอีกครั้ง">
+          </div>
+          <button class="tbtn gold" onclick="changeMyPw()" style="width:100%;padding:8px">🔑 เปลี่ยนรหัสผ่าน</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <!-- รายชื่อ users ทั้งหมด -->
+      <div class="panel">
+        <div class="ph">
+          <span class="ph-t">👥 Admin Users ทั้งหมด</span>
+          <button class="tbtn" onclick="loadUsers()" style="font-size:10px;padding:3px 8px">↻ รีเฟรช</button>
+        </div>
+        <div id="users-list" style="padding:12px">
+          <div style="color:var(--muted);text-align:center;padding:20px">กำลังโหลด...</div>
+        </div>
+      </div>
+
+      <!-- Modal แก้ไข user -->
+      <div id="edit-user-box" style="display:none" class="setup-box">
+        <h3>✏️ แก้ไขผู้ใช้: <span id="eu-title"></span></h3>
+        <input type="hidden" id="eu-uid">
+        <div class="fr"><label>ชื่อที่แสดง</label>
+          <input class="inp" id="eu-name" style="width:100%">
+        </div>
+        <div class="fr"><label>สิทธิ์</label>
+          <select class="inp" id="eu-role" style="width:100%">
+            <option value="admin">🔴 Admin</option>
+            <option value="mod">🟡 Moderator</option>
+            <option value="viewer">🔵 Viewer</option>
+          </select>
+        </div>
+        <div class="fr"><label>รหัสผ่านใหม่ (ว่าง = ไม่เปลี่ยน)</label>
+          <input class="inp" id="eu-pw" type="password" style="width:100%" placeholder="ว่างไว้ถ้าไม่ต้องการเปลี่ยน">
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="tbtn gold" onclick="saveUser()" style="flex:1;padding:8px">💾 บันทึก</button>
+          <button class="tbtn r" onclick="deleteUser()" style="flex:1;padding:8px">🗑 ลบผู้ใช้</button>
+          <button class="tbtn" onclick="document.getElementById('edit-user-box').style.display='none'" style="padding:8px">ยกเลิก</button>
+        </div>
+        <div id="eu-result" style="margin-top:8px;font-size:11px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- LOGS -->
+<div id="p-logs" class="page">
+  <div style="display:flex;gap:7px;margin-bottom:10px">
+    <button class="tbtn" onclick="load()">↻ รีเฟรช</button>
+    <button class="tbtn" onclick="resetData('logs')">🗑 ล้าง Log</button>
+    <select class="inp" id="log-filter" onchange="renderLogs()" style="width:120px">
+      <option value="">ทั้งหมด</option>
+      <option value="bet">bet</option>
+      <option value="result">result</option>
+      <option value="slip">slip</option>
+      <option value="topup">topup</option>
+      <option value="open">open</option>
+      <option value="close">close</option>
+      <option value="msg">msg</option>
+    </select>
+  </div>
+  <div class="panel"><div id="log-list" style="max-height:70vh;overflow-y:auto"></div></div>
+</div>
+
+</div></div></div>
+
+<div class="toast" id="toast"><span id="tic">✅</span><span id="tmsg"></span></div>
+
+<script>
+const DICE=['','⚀','⚁','⚂','⚃','⚄','⚅'];
+const TK=(()=>{
+  const srv='__TOKEN__';
+  if(srv&&srv!=='__TOKEN__'){localStorage.setItem('bd_tk',srv);return srv;}
+  const url=new URLSearchParams(window.location.search).get('token');
+  if(url){localStorage.setItem('bd_tk',url);return url;}
+  return localStorage.getItem('bd_tk')||'';
+})();
+// ── LOGIN ──────────────────────────────────────────────────────
+function checkAuth() {
+  if (!TK) {
+    document.getElementById('login-overlay').style.display = 'flex';
+    setTimeout(() => document.getElementById('login-pw')?.focus(), 100);
+  }
+}
+async function doLogin() {
+  const pw = document.getElementById('login-pw')?.value?.trim();
+  if (!pw) return;
+  document.getElementById('login-err').textContent = '';
+  // Try authenticating
+  const r = await fetch('/api/data', { headers: { 'x-admin-token': pw, 'Content-Type': 'application/json' } });
+  if (r.ok) {
+    localStorage.setItem('bd_tk', pw);
+    document.getElementById('login-overlay').style.display = 'none';
+    window.location.search = '?token=' + encodeURIComponent(pw);
+  } else {
+    document.getElementById('login-err').textContent = '❌ รหัสผ่านไม่ถูกต้อง';
+    document.getElementById('login-pw').value = '';
+    document.getElementById('login-pw').focus();
+  }
+}
+checkAuth();
+let D={}, betFilter='all', dv=[0,0,0], selPlayerUid='', toastT;
+
+async function api(p,body){
+  const token=TK||localStorage.getItem('bd_tk')||'';
+  const o={headers:{'x-admin-token':token,'Content-Type':'application/json'}};
+  if(body){o.method='POST';o.body=JSON.stringify(body);}
+  try{
+    const r=await fetch(p,o);
+    if(r.status===401){
+      localStorage.removeItem('bd_tk');
+      const t=prompt('🔑 Session หมดอายุ — ใส่ Admin Password ใหม่:');
+      if(t){localStorage.setItem('bd_tk',t);window.location.search='?token='+encodeURIComponent(t);}
+      return {ok:false,error:'unauthorized'};
+    }
+    return r.json();
+  }catch(e){return {ok:false,error:'network: '+e.message};}
+}
+
+async function load(){
+  D=await api('/api/data');
+  if(!D||D.error){toast('❌ โหลดไม่ได้ — ตรวจสอบ token','e');return;}
+  const s=D.stats||{};
+  document.getElementById('hdr-round').textContent=s.currentRound||'—';
+  document.getElementById('k-round').textContent=s.currentRound||'—';
+  document.getElementById('k-pending').textContent=s.pendingBets||0;
+  document.getElementById('k-players').textContent=s.totalPlayers||0;
+  document.getElementById('k-profit').textContent=(s.houseProfit||0).toLocaleString();
+  document.getElementById('k-deposit').textContent=(s.totalDeposit||0).toLocaleString();
+  document.getElementById('k-slip-pending').textContent=s.pendingSlips||0;
+  document.getElementById('k-slip-total').textContent=(s.totalSlipAmt||0).toLocaleString();
+  document.getElementById('hdr-slip-badge').textContent=s.pendingSlips||0;
+  document.getElementById('nb-bets').textContent=s.pendingBets||0;
+  document.getElementById('nb-slips').textContent=s.pendingSlips||0;
+
+  // stats slip page
+  const slips=D.slips||[];
+  const setEl=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  setEl('sk-pending', slips.filter(s=>s.status==='pending').length);
+  setEl('sk-approved', slips.filter(s=>s.status==='approved').length);
+  setEl('sk-rejected', slips.filter(s=>s.status==='rejected'||s.status==='duplicate').length);
+  setEl('sk-total', slips.filter(s=>s.status==='approved').reduce((a,s)=>a+(s.ai?.amount||0),0).toLocaleString()+' ฿');
+
+  const ot=document.getElementById('open-tag');
+  ot.textContent=s.isOpen?'🟢 เปิดรับแทง':'🔴 ปิดรับแทง';
+  ot.className='tag '+(s.isOpen?'tg':'tr');
+
+  // slip settings
+  if(D.settings){
+    const se=id=>document.getElementById(id);
+    if(se('s-name'))       se('s-name').value       = D.settings.botName||'มารวย';
+    if(se('s-balance'))    se('s-balance').value     = D.settings.startBalance||0;
+    if(se('s-slip-min'))   se('s-slip-min').value    = D.settings.slipMinAmount||1;
+    if(se('s-auto-slip'))  se('s-auto-slip').value   = D.settings.autoTopupSlip?'1':'0';
+    if(se('s-auto-reply')) se('s-auto-reply').value  = D.settings.autoReply!==false?'1':'0';
+    if(se('s-gid'))        se('s-gid').value         = D.defaultGroupId||'';
+    if(se('s-baseurl'))   se('s-baseurl').value      = D.settings.serverBaseUrl||'';
+    if(se('s-receiver-name')) se('s-receiver-name').value = D.settings.receiverAccountName||'';
+    if(se('s-receiver-bank')) se('s-receiver-bank').value = D.settings.receiverBankName||'';
+    if(se('s-require-receiver')) se('s-require-receiver').value = D.settings.requireReceiverMatch?'1':'0';
+    if(se('s-slip-age'))  se('s-slip-age').value  = D.settings.slipMaxAgeMinutes??60;
+    if(se('sl-auto'))      se('sl-auto').value       = D.settings.autoTopupSlip?'1':'0';
+    if(se('sl-min'))       se('sl-min').value        = D.settings.slipMinAmount||1;
+  }
+
+  renderDash(); renderBets(); renderRounds(); renderPlayers(); renderFinance(); renderSlips(); renderLogs(); renderKnownGroups(); renderImages();
+  syncBaseUrl();
+  checkAIStatus();
+}
+
+async function checkAIStatus(){
+  const r=await api('/health');
+  const el=document.getElementById('ai-status');
+  if(!el) return;
+  if(r.aiEnabled){
+    el.innerHTML='<span style="color:var(--grn)">✅ Anthropic API พร้อมใช้งาน</span>';
+  } else {
+    el.innerHTML='<span style="color:var(--red)">❌ ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY</span>';
+  }
+}
+
+function fmt(ts){if(!ts)return'—';const d=new Date(ts);return d.toLocaleDateString('th-TH',{month:'short',day:'numeric'})+' '+d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});}
+
+function renderDash(){
+  const s=D.stats||{};
+  // bets
+  const bets=(D.bets||[]).filter(b=>b.status==='pending').slice(0,8);
+  document.getElementById('d-betct').textContent=(s.pendingBets||0)+' รอผล';
+  document.getElementById('d-bets').innerHTML=bets.length?bets.map(b=>\`<tr>
+    <td style="color:var(--txt)">\${b.name}</td><td style="color:var(--muted)">\${b.memberId}</td>
+    <td style="color:var(--gold)">\${b.round}</td>
+    <td style="color:var(--muted);font-size:10px">\${(b.items||[]).map(i=>i.type+'='+i.amt).join(' ')}</td>
+    <td style="color:var(--txt)">\${(b.total||0).toLocaleString()}</td>
+    <td><span class="badge bb">รอผล</span></td>
+  </tr>\`).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">ไม่มีรายการแทง</td></tr>';
+
+  // slips dash
+  const slips=(D.slips||[]).slice(0,4);
+  document.getElementById('d-slips').innerHTML=slips.length?slips.map(sl=>slipCardHtml(sl,true)).join(''):'<div style="padding:12px;color:var(--muted);font-size:11px">ยังไม่มีสลิป</div>';
+
+  // players
+  const pls=(D.players||[]).sort((a,b)=>b.balance-a.balance).slice(0,8);
+  document.getElementById('d-players').innerHTML=pls.map(p=>\`
+    <div class="ri">
+      <div class="av">\${p.name[0]||'?'}</div>
+      <div style="flex:1;overflow:hidden">
+        <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\${p.name}</div>
+        <div style="font-size:10px;color:var(--muted)">ID \${p.memberId}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;font-weight:700;color:var(--gold)">\${p.balance.toLocaleString()}</div>
+      </div>
+    </div>\`).join('');
+
+  // rounds
+  document.getElementById('d-rounds').innerHTML=(D.rounds||[]).slice(0,5).map(r=>\`
+    <div class="ri">
+      <div style="width:36px;height:28px;background:var(--bg3);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--gold);flex-shrink:0">\${r.round}</div>
+      <div style="flex:1"><div style="font-size:12px">\${DICE[r.d1]||r.d1} \${DICE[r.d2]||r.d2} \${DICE[r.d3]||r.d3} = \${r.sum}</div></div>
+      <span class="badge \${r.label==='ต๊อก!'?'bpu':r.label==='สูง'?'br':'bb'}">\${r.label}</span>
+    </div>\`).join('');
+
+  // roll page bets
+  const rb=(D.bets||[]).filter(b=>b.round===(D.stats?.currentRound));
+  document.getElementById('r-betct').textContent=rb.length;
+  document.getElementById('r-bets').innerHTML=rb.slice(0,12).map(b=>\`<tr>
+    <td>\${b.name}</td>
+    <td style="font-size:10px;color:var(--muted)">\${(b.items||[]).map(i=>i.type+'='+i.amt).join(' ')}</td>
+    <td style="color:var(--gold)">\${(b.total||0).toLocaleString()}</td>
+  </tr>\`).join('');
+}
+
+function slipCardHtml(sl, compact=false){
+  const ai=sl.ai||{};
+  const statusMap={pending:'⏳ รออนุมัติ',approved:'✅ อนุมัติแล้ว',rejected:'❌ ปฏิเสธ',duplicate:'⚠️ สลิปซ้ำ'};
+  const statusColor={pending:'var(--gold)',approved:'var(--grn)',rejected:'var(--red)',duplicate:'var(--pur)'};
+  const amt=ai.amount||0;
+  const actions=(!compact && sl.status==='pending')?
+    \`<div class="slip-actions">
+      <select class="inp" id="slip-uid-\${sl.id}" style="flex:1;font-size:10px;padding:3px 6px">
+        \${(D.players||[]).map(p=>\`<option value="\${p.uid}" \${sl.matchedPlayer?.uid===p.uid?'selected':''}>\${p.name}</option>\`).join('')}
+      </select>
+      <button class="tbtn g" onclick="approveSlip('\${sl.id}')" style="padding:4px 10px;font-size:11px">✅ อนุมัติ+เติมเงิน</button>
+      <button class="tbtn r" onclick="rejectSlip('\${sl.id}')" style="padding:4px 8px;font-size:11px">❌</button>
+    </div>\`:'';
+
+  return \`<div class="slip-card \${sl.status}">
+    <div class="slip-hd">
+      <span class="slip-name">👤 \${sl.name}</span>
+      <span class="slip-amt">\${amt.toLocaleString()} ฿</span>
+    </div>
+    <div class="slip-meta">
+      🏦 \${ai.bankFrom||'—'} → \${ai.bankTo||'—'}<br>
+      \${ai.senderName?'📤 '+ai.senderName+'<br>':''}\${ai.refNo?'📋 Ref: '+ai.refNo+'<br>':''}
+      \${ai.datetime?'🕐 '+ai.datetime+'<br>':''}
+      \${sl.matchedPlayer?'🎯 ผู้เล่น: <b style="color:var(--cyan)">'+sl.matchedPlayer.name+'</b><br>':''}
+      <span style="color:\${statusColor[sl.status]||'var(--muted)'}">⚡ \${statusMap[sl.status]||sl.status}</span>
+      · <span style="color:var(--muted)">\${fmt(sl.ts)}</span>
+      \${ai.confidence?'· <span class="ai-badge">\${ai.confidence}</span>':''}
+    </div>
+    \${actions}
+  </div>\`;
+}
+
+function renderSlips(){
+  const f=document.getElementById('slip-filter')?.value||'';
+  const slips=(D.slips||[]).filter(s=>!f||s.status===f);
+  document.getElementById('slip-list').innerHTML=slips.length?slips.map(s=>slipCardHtml(s)).join(''):'<div style="color:var(--muted);text-align:center;padding:24px">ยังไม่มีสลิป</div>';
+}
+
+async function approveSlip(id){
+  const uid=document.getElementById('slip-uid-'+id)?.value;
+  const r=await api('/api/slip/approve',{slipId:id,uid,notify:true});
+  if(r.ok){toast('✅ อนุมัติสลิปแล้ว เงินเพิ่ม '+r.balance?.toLocaleString());load();}
+  else toast('❌ '+r.error,'e');
+}
+async function rejectSlip(id){
+  const reason=prompt('เหตุผลที่ปฏิเสธ (ว่างได้):');
+  const r=await api('/api/slip/reject',{slipId:id,reason,notify:true});
+  if(r.ok){toast('✅ ปฏิเสธสลิปแล้ว');load();}
+  else toast('❌ '+r.error,'e');
+}
+
+async function saveSlipSettings(){
+  const autoTopup=document.getElementById('sl-auto')?.value==='1';
+  const minAmt=parseInt(document.getElementById('sl-min')?.value)||1;
+  const r=await api('/api/settings',{autoTopupSlip:autoTopup,slipMinAmount:minAmt});
+  if(r.ok){toast('✅ บันทึกการตั้งค่าสลิปแล้ว');load();}else toast('❌ เกิดข้อผิดพลาด','e');
+}
+
+function renderBets(){
+  const bets=(D.bets||[]).filter(b=>betFilter==='all'||b.status===betFilter);
+  document.getElementById('bets-tb').innerHTML=bets.slice(0,100).map(b=>\`<tr>
+    <td>\${b.name}</td><td style="color:var(--muted)">\${b.memberId}</td>
+    <td style="color:var(--gold)">\${b.round}</td>
+    <td style="font-size:10px;color:var(--muted)">\${(b.items||[]).map(i=>i.type+'='+i.amt).join(' ')}</td>
+    <td>\${(b.total||0).toLocaleString()}</td>
+    <td><span class="badge \${b.status==='pending'?'bb':'bg'}">\${b.status==='pending'?'รอผล':'เสร็จ'}</span></td>
+    <td style="color:\${(b.net||0)>=0?'var(--grn)':'var(--red)'}">\${b.net!==undefined?(b.net>=0?'+':'')+b.net.toLocaleString():'—'}</td>
+  </tr>\`).join('');
+}
+
+function renderRounds(){
+  document.getElementById('rounds-tb').innerHTML=(D.rounds||[]).slice(0,50).map(r=>\`<tr>
+    <td style="color:var(--gold)">\${r.round}</td>
+    <td>\${DICE[r.d1]||r.d1} \${DICE[r.d2]||r.d2} \${DICE[r.d3]||r.d3}</td>
+    <td>\${r.sum}</td>
+    <td><span class="badge \${r.label==='ต๊อก!'?'bpu':r.label==='สูง'?'br':'bb'}">\${r.label}</span></td>
+    <td style="color:var(--muted)">\${r.settled}</td>
+    <td style="color:var(--muted);font-size:10px">\${fmt(r.ts)}</td>
+  </tr>\`).join('');
+}
+
+function renderPlayers(){
+  const pls=(D.players||[]).sort((a,b)=>b.balance-a.balance);
+  document.getElementById('pl-count').textContent=pls.length+' คน';
+  document.getElementById('players-tb').innerHTML=pls.map(p=>\`<tr>
+    <td style="color:var(--muted)">\${p.memberId}</td>
+    <td style="font-weight:600">\${p.name}</td>
+    <td style="color:var(--gold);font-weight:700">\${p.balance.toLocaleString()}</td>
+    <td style="color:var(--muted)">\${(p.totalBet||0).toLocaleString()}</td>
+    <td style="color:var(--grn)">\${(p.totalWin||0).toLocaleString()}</td>
+    <td style="color:var(--red)">\${(p.totalLoss||0).toLocaleString()}</td>
+    <td><button class="tbtn" onclick="quickFinPlayer('\${p.uid}')" style="font-size:10px;padding:3px 8px">💳 เติม/ถอน</button></td>
+  </tr>\`).join('');
+}
+
+function renderFinance(){
+  const typeLabel={topup:'เติม',withdraw:'ถอน',slip:'สลิป AI'};
+  const typeColor={topup:'var(--pur)',withdraw:'var(--red)',slip:'var(--cyan)'};
+  document.getElementById('fin-tb').innerHTML=(D.deposits||[]).slice(0,60).map(d=>\`<tr>
+    <td>\${d.name}</td>
+    <td style="color:\${(d.amt||0)>=0?'var(--grn)':'var(--red)'};font-weight:700">\${(d.amt||0)>=0?'+':''}\${(d.amt||0).toLocaleString()}</td>
+    <td><span class="badge" style="background:rgba(0,0,0,.2);color:\${typeColor[d.type]||'var(--muted)'}">\${typeLabel[d.type]||d.type}\${d.refNo?'<br><span style="font-size:9px;color:var(--muted)">'+d.refNo+'</span>':''}</span></td>
+    <td style="color:var(--muted);font-size:10px">\${fmt(d.ts)}</td>
+  </tr>\`).join('');
+}
+
+function renderLogs(){
+  const f=document.getElementById('log-filter')?.value||'';
+  const logs=(D.logs||[]).filter(l=>!f||l.type===f);
+  const cls={bet:'lt-bet',result:'lt-result',open:'lt-open',close:'lt-close',topup:'lt-topup',slip:'lt-slip'};
+  document.getElementById('log-list').innerHTML=logs.slice(0,200).map(l=>\`
+    <div class="log-r">
+      <span class="lt \${cls[l.type]||''}">\${l.type}</span>
+      <span class="lm">\${l.msg}</span>
+      <span style="color:var(--muted);font-size:10px;flex-shrink:0">\${fmt(l.ts)}</span>
+    </div>\`).join('');
+}
+
+function renderKnownGroups(){
+  const groups=new Set();
+  (D.bets||[]).forEach(b=>b.groupId&&groups.add(b.groupId));
+  if(D.defaultGroupId)groups.add(D.defaultGroupId);
+  const el=document.getElementById('known-groups');if(!el)return;
+  if(!groups.size){el.innerHTML='<span style="color:var(--muted)">ยังไม่มี Group ID</span>';return;}
+  el.innerHTML=[...groups].map(g=>\`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <code style="flex:1;font-size:10px;color:var(--gold);background:var(--bg3);padding:4px 8px;border-radius:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\${g}</code>
+      <button class="tbtn" onclick="usePushTarget('\${g}')" style="font-size:10px;padding:3px 8px">ใช้</button>
+    </div>\`).join('');
+}
+
+function usePushTarget(gid){
+  ['push-to','r-gid','q-gid'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=gid;});
+  toast('✅ เซ็ต Group ID แล้ว');
+}
+
+function quickFinPlayer(uid){
+  selPlayerUid=uid;
+  const p=(D.players||[]).find(x=>x.uid===uid);
+  if(p){
+    document.getElementById('fin-search').value=p.name;
+    document.getElementById('fin-player-result').innerHTML=\`<div style="background:var(--bg3);border:1px solid var(--bdr2);border-radius:6px;padding:10px;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:600;color:var(--gold)">\${p.name}</div>
+      <div style="font-size:11px;color:var(--muted)">ID: \${p.memberId} · เงิน: \${p.balance.toLocaleString()}</div></div>\`;
+  }
+  go('finance');
+}
+
+// dice
+// ── DICE SHAKE ANIMATION ──────────────────────────────────────
+const DICE_FACES = ['','⚀','⚁','⚂','⚃','⚄','⚅'];
+const DICE_NUMS  = ['','1','2','3','4','5','6'];
+
+function updateDiceDisplay(n, val) {
+  const dfEl = document.getElementById('df'+n);
+  if (dfEl) {
+    dfEl.textContent = DICE_FACES[val] || val;
+    // Color: high values red dots, low blue
+    dfEl.style.color = val >= 4 ? '#c0392b' : '#2c3e50';
+  }
+  // also update legacy die element if exists
+  const dieEl = document.getElementById('die'+n);
+  if (dieEl) dieEl.textContent = DICE_FACES[val] || val;
+}
+
+function shakeDice(n, finalVal, callback) {
+  const dfEl = document.getElementById('df'+n);
+  if (!dfEl) { if(callback) callback(); return; }
+  dfEl.classList.remove('shaking');
+  void dfEl.offsetWidth; // reflow
+  dfEl.classList.add('shaking');
+  
+  // Show random faces during shake
+  let count = 0;
+  const interval = setInterval(() => {
+    dfEl.textContent = DICE_FACES[Math.ceil(Math.random()*6)];
+    count++;
+    if (count >= 8) {
+      clearInterval(interval);
+      dfEl.classList.remove('shaking');
+      dfEl.textContent = DICE_FACES[finalVal];
+      dfEl.style.color = finalVal >= 4 ? '#c0392b' : '#2c3e50';
+      if (callback) callback();
+    }
+  }, 70);
+}
+
+async function shakeAllDice() {
+  const vals = [Math.ceil(Math.random()*6), Math.ceil(Math.random()*6), Math.ceil(Math.random()*6)];
+  // Shake all 3 simultaneously
+  let done = 0;
+  const onDone = () => {
+    done++;
+    if (done === 3) {
+      dv = vals;
+      updDiceDisplay();
+    }
+  };
+  vals.forEach((v,i) => shakeDice(i+1, v, onDone));
+}
+
+function updDiceDisplay() {
+  const sum = dv[0]+dv[1]+dv[2];
+  const triple = dv[0]===dv[1]&&dv[1]===dv[2];
+  const hi = sum>=11;
+  const lbl = triple?'ต๊อก!':hi?'สูง':'ต่ำ';
+  
+  const sumEl = document.getElementById('dsum');
+  const lblEl = document.getElementById('dlbl-badge');
+  const lblHidden = document.getElementById('dlbl');
+  
+  if(sumEl) sumEl.textContent = dv[0]?sum:'—';
+  if(lblHidden) lblHidden.textContent = lbl;
+  if(lblEl) {
+    lblEl.textContent = dv[0] ? lbl : '—';
+    if(triple) { lblEl.style.background='rgba(139,111,204,.2)';lblEl.style.color='#8b6fcc'; }
+    else if(hi) { lblEl.style.background='rgba(196,82,82,.2)';lblEl.style.color='#c45252'; }
+    else { lblEl.style.background='rgba(74,127,192,.2)';lblEl.style.color='#4a7fc0'; }
+  }
+  // Update manual inputs
+  ['md1','md2','md3'].forEach((id,i)=>{ const e=document.getElementById(id); if(e&&dv[i])e.value=dv[i]; });
+}
+
+function rollOne(n){
+  const v=Math.ceil(Math.random()*6);dv[n-1]=v;
+  const el=document.getElementById('die'+n);
+  el.classList.remove('spin');void el.offsetWidth;el.classList.add('spin');
+  el.textContent=DICE[v];document.getElementById('md'+n).value=v;updSum();
+}
+function updDice(){[1,2,3].forEach(n=>{const v=+document.getElementById('md'+n).value;if(v>=1&&v<=6){dv[n-1]=v;document.getElementById('die'+n).textContent=DICE[v];}});updSum();}
+function updSum(){
+  const[d1,d2,d3]=dv;if(!d1||!d2||!d3){document.getElementById('dsum').textContent='—';document.getElementById('dlbl').textContent='—';return;}
+  const sum=d1+d2+d3,triple=d1===d2&&d2===d3,hi=sum>=11;
+  document.getElementById('dsum').textContent=sum;
+  document.getElementById('dlbl').textContent=triple?'🎰 ต๊อก!':hi?'🔴 สูง':'🔵 ต่ำ';
+}
+function getGid(){return document.getElementById('r-gid')?.value.trim()||document.getElementById('q-gid')?.value.trim()||D.defaultGroupId||null;}
+
+async function doRandom(){
+  // เขย่า animation ใน dashboard ก่อน
+  await shakeAllDice();
+  await new Promise(r=>setTimeout(r,700));
+  const baseUrl = document.getElementById('r-baseurl')?.value?.trim() || 
+                  document.getElementById('s-baseurl')?.value?.trim() || '';
+  const r = await api('/api/roll-gif',{random:true, groupId:getGid(), confirmMode:true, baseUrl});
+  if(r.ok && r.pendingConfirm){ 
+    // show GIF preview
+    if(baseUrl){
+      showDiceGifPreview(r.d1, r.d2, r.d3);
+    }
+    showConfirmBox(r); 
+  } else { showRollResult(r); load(); }
+}
+async function doManual(){
+  const[d1,d2,d3]=dv;if(!d1||!d2||!d3){toast('❌ คลิกลูกเต๋าสุ่มก่อน','e');return;}
+  const baseUrl = document.getElementById('r-baseurl')?.value?.trim() || 
+                  document.getElementById('s-baseurl')?.value?.trim() || '';
+  // Shake animation then send
+  shakeDice(1,d1,null); shakeDice(2,d2,null); shakeDice(3,d3,null);
+  await new Promise(r=>setTimeout(r,700));
+  const r = await api('/api/roll-gif',{d1,d2,d3, groupId:getGid(), confirmMode:true, baseUrl});
+  if(r.ok && r.pendingConfirm){ 
+    if(baseUrl) showDiceGifPreview(d1,d2,d3);
+    showConfirmBox(r); 
+  } else { showRollResult(r); load(); }
+}
+function showRollResult(r){
+  if(!r.ok){toast('❌ เกิดข้อผิดพลาด','e');return;}
+  const sum=r.d1+r.d2+r.d3,triple=r.d1===r.d2&&r.d2===r.d3,hi=sum>=11;
+  let html=\`<div class="res-box"><div style="font-size:11px;color:var(--muted);margin-bottom:8px">\${DICE[r.d1]}\${DICE[r.d2]}\${DICE[r.d3]} = \${sum} (\${triple?'ต๊อก!':hi?'สูง':'ต่ำ'}) · ออกผล \${r.settled||0} รายการ</div>\`;
+  (r.results||[]).forEach(x=>{const c=x.net>=0?'var(--grn)':'var(--red)';html+=\`<div class="res-r"><span>\${x.name}</span><span style="color:\${c};font-weight:700">\${x.net>=0?'+':''}\${x.net.toLocaleString()}</span></div>\`;});
+  if(!r.results?.length)html+='<div style="color:var(--muted);font-size:11px">ไม่มีรายการเดิมพันรอบนี้</div>';
+  html+='</div>';
+  document.getElementById('r-result').innerHTML=html;
+  toast('✅ ออกผลรอบเสร็จแล้ว'+(getGid()?' ส่งไป LINE แล้ว':''));
+}
+
+async function quickOpen(){const gid=getGid();const r=await api('/api/open',{groupId:gid});if(r.ok){toast('🟢 เปิดรับแทง รอบ '+r.round);load();}else toast('❌ เกิดข้อผิดพลาด','e');}
+async function quickClose(){const gid=getGid();const r=await api('/api/close',{groupId:gid});if(r.ok){toast('🔴 ปิดรับแทง '+r.pendingBets+' รายการ');load();}else toast('❌ เกิดข้อผิดพลาด','e');}
+async function quickPush(){
+  const gid=getGid();const msg=document.getElementById('quick-msg')?.value.trim();
+  if(!gid||!msg){toast('❌ ใส่ Group ID และข้อความ','e');return;}
+  const r=await api('/api/push',{to:gid,message:msg});
+  if(r.ok){toast('✅ ส่งข้อความแล้ว');document.getElementById('quick-msg').value='';}
+  else toast('❌ ส่งไม่สำเร็จ','e');
+}
+
+function searchPlayer(){
+  const q=document.getElementById('fin-search').value.toLowerCase();
+  if(!q){selPlayerUid='';document.getElementById('fin-player-result').innerHTML='';return;}
+  const found=(D.players||[]).find(p=>p.name.toLowerCase().includes(q)||String(p.memberId)===q);
+  if(found){
+    selPlayerUid=found.uid;
+    document.getElementById('fin-player-result').innerHTML=\`<div style="background:var(--bg3);border:1px solid var(--bdr2);border-radius:6px;padding:10px;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:600;color:var(--gold)">\${found.name}</div>
+      <div style="font-size:11px;color:var(--muted)">ID: \${found.memberId} · เงิน: \${found.balance.toLocaleString()}</div></div>\`;
+  } else {
+    selPlayerUid='';
+    document.getElementById('fin-player-result').innerHTML='<div style="font-size:11px;color:var(--muted);margin-bottom:8px">ไม่พบผู้เล่น</div>';
+  }
+}
+
+async function doTopup(){
+  const amt=parseInt(document.getElementById('fin-amt').value);const notify=document.getElementById('fin-notify')?.checked;
+  if(!selPlayerUid||!amt){toast('❌ เลือกผู้เล่นและใส่จำนวน','e');return;}
+  const r=await api('/api/topup',{uid:selPlayerUid,amt,notify});
+  if(r.ok){toast('✅ เติม '+amt.toLocaleString()+' แล้ว (รวม '+r.balance.toLocaleString()+')');load();}
+  else toast('❌ เกิดข้อผิดพลาด','e');
+}
+async function doWithdraw(){
+  const amt=parseInt(document.getElementById('fin-amt').value);const notify=document.getElementById('fin-notify')?.checked;
+  if(!selPlayerUid||!amt){toast('❌ เลือกผู้เล่นและใส่จำนวน','e');return;}
+  const r=await api('/api/withdraw',{uid:selPlayerUid,amt,notify});
+  if(r.ok){toast('✅ ถอน '+amt.toLocaleString()+' แล้ว (เหลือ '+r.balance.toLocaleString()+')');load();}
+  else toast('❌ เกิดข้อผิดพลาด','e');
+}
+
+async function doPush(){
+  const to=document.getElementById('push-to').value.trim();const msg=document.getElementById('push-msg').value.trim();
+  if(!to||!msg){toast('❌ ใส่ปลายทางและข้อความ','e');return;}
+  const r=await api('/api/push',{to,message:msg});
+  if(r.ok){toast('✅ ส่งข้อความแล้ว');document.getElementById('push-msg').value='';}
+  else toast('❌ ส่งไม่สำเร็จ','e');
+}
+
+async function saveSettings(){
+  const r=await api('/api/settings',{
+    botName:       document.getElementById('s-name')?.value?.trim()||'มารวย',
+    serverBaseUrl: document.getElementById('s-baseurl')?.value?.trim()||'',
+    receiverAccountName: document.getElementById('s-receiver-name')?.value?.trim()||'',
+    receiverBankName:    document.getElementById('s-receiver-bank')?.value?.trim()||'',
+    requireReceiverMatch: document.getElementById('s-require-receiver')?.value==='1',
+    slipMaxAgeMinutes:   +(document.getElementById('s-slip-age')?.value)||0,
+    startBalance:  +(document.getElementById('s-balance')?.value)||0,
+    slipMinAmount: +(document.getElementById('s-slip-min')?.value)||1,
+    autoTopupSlip: document.getElementById('s-auto-slip')?.value==='1',
+    autoReply:     document.getElementById('s-auto-reply')?.value==='1',
+    defaultGroupId:document.getElementById('s-gid')?.value?.trim()||'',
+  });
+  if(r.ok){toast('✅ บันทึกการตั้งค่าแล้ว');load();}else toast('❌ เกิดข้อผิดพลาด','e');
+}
+
+function togglePw(id){const el=document.getElementById(id);el.type=el.type==='password'?'text':'password';}
+
+async function loadCredStatus(){
+  const wh=document.getElementById('wh-url-text');
+  if(wh) wh.textContent=window.location.origin+'/webhook';
+  try{
+    const d=await api('/api/credentials');
+    if(!d?.ok) return;
+    const ok=v=>\`<span style="color:var(--grn)">🟢 \${v}</span>\`;
+    const no=()=>'<span style="color:var(--red)">🔴 ไม่ได้ตั้งค่า</span>';
+    const se=id=>document.getElementById(id);
+    if(se('st-secret')) se('st-secret').innerHTML = d.lineSecret.set   ? ok(d.lineSecret.preview)   : no();
+    if(se('st-token'))  se('st-token').innerHTML  = d.lineToken.set    ? ok(d.lineToken.preview)    : no();
+    if(se('st-ai'))     se('st-ai').innerHTML     = d.anthropicKey.set ? ok(d.anthropicKey.preview) : no();
+    const bi=se('st-bot');
+    if(d.runtimeActive?.token){
+      try{
+        const bd=await api('/api/bot-info');
+        if(bi) bi.innerHTML=bd.ok&&bd.info ? ok(bd.info.displayName||'OK') : no();
+      }catch{ if(bi) bi.innerHTML=no(); }
+    } else { if(bi) bi.innerHTML=no(); }
+  }catch(e){ console.warn('loadCredStatus:',e); }
+}
+
+async function loadMongoStatus(){
+  const el=document.getElementById('st-mongo');
+  const el2=document.getElementById('mongo-status-box');
+  try{
+    const r=await api('/health');
+    const ok='<span style="color:var(--grn)">🟢 เชื่อมต่อแล้ว</span>';
+    const no='<span style="color:var(--gold)">🟡 ยังไม่ได้เชื่อมต่อ</span>';
+    if(el)  el.innerHTML  = r.mongoConnected ? ok : no;
+    if(el2) el2.innerHTML = r.mongoConnected
+      ? '<span style="color:var(--grn)">🟢 MongoDB เชื่อมต่อแล้ว — ข้อมูลบันทึกถาวร</span>'
+      : '<span style="color:var(--gold)">🟡 ยังไม่เชื่อมต่อ — ข้อมูลหายเมื่อ restart (ใส่ URI ด้านบน)</span>';
+  }catch{ if(el) el.textContent='⬜ ตรวจไม่ได้'; }
+}
+
+async function saveCreds(test=false){
+  const secret=document.getElementById('c-secret').value.trim();
+  const token =document.getElementById('c-token').value.trim();
+  if(!secret&&!token){toast('❌ กรุณากรอก Secret หรือ Token','e');return;}
+  const el=document.getElementById('cred-result');
+  el.style.display='block';el.style.color='var(--muted)';
+  el.textContent=test?'⏳ กำลังบันทึก + ทดสอบ LINE...':'⏳ กำลังบันทึก...';
+  const body={};
+  if(secret) body.lineSecret=secret;
+  if(token)  body.lineToken=token;
+  if(test)   body.testConnection=true;
+  const r=await api('/api/credentials',body);
+  if(r?.ok){
+    if(r.botInfo){
+      const n=r.botInfo.displayName||r.botInfo.basicId||'LINE Bot';
+      el.style.color='var(--grn)';
+      el.innerHTML=\`✅ เชื่อมต่อสำเร็จ! บอท: <b>\${n}</b>\`;
+      toast('✅ LINE OA: '+n);
+    } else if(r.testError){
+      el.style.color='var(--gold)';
+      el.textContent='⚠️ บันทึกแล้ว แต่ Token อาจยังไม่ถูกต้อง: '+r.testError;
+    } else {
+      el.style.color='var(--grn)';el.textContent='✅ บันทึก credentials แล้ว';
+      toast('✅ บันทึกสำเร็จ');
+    }
+    document.getElementById('c-secret').value='';
+    document.getElementById('c-token').value='';
+    loadCredStatus();
+  } else {
+    el.style.color='var(--red)';el.textContent='❌ '+(r?.error||'ไม่สำเร็จ');
+    toast('❌ บันทึกไม่สำเร็จ','e');
+  }
+}
+
+async function saveAIKey(){
+  const ai=document.getElementById('c-ai').value.trim();
+  if(!ai){toast('❌ กรุณาใส่ API Key','e');return;}
+  const el=document.getElementById('ai-result');
+  el.style.display='block';el.style.color='var(--muted)';el.textContent='⏳ กำลังบันทึก...';
+  const r=await api('/api/credentials',{anthropicKey:ai});
+  if(r?.ok){
+    el.style.color='var(--grn)';el.textContent='✅ Anthropic Key บันทึกแล้ว — AI สลิปพร้อมใช้';
+    document.getElementById('c-ai').value='';
+    toast('✅ AI Key OK'); loadCredStatus();
+  } else {
+    el.style.color='var(--red)';el.textContent='❌ '+(r?.error||'ไม่สำเร็จ');
+    toast('❌ ไม่สำเร็จ','e');
+  }
+}
+
+async function saveMongo(){
+  const uri=document.getElementById('c-mongo').value.trim();
+  if(!uri){toast('❌ กรุณาใส่ URI','e');return;}
+  if(uri.includes('<password>')){toast('❌ แทนที่ <password> ด้วยรหัสผ่านจริงก่อน','e');return;}
+  const el=document.getElementById('mongo-result');
+  el.style.display='block';el.style.color='var(--muted)';
+  el.textContent='⏳ กำลังทดสอบ MongoDB... (อาจใช้เวลา 5-10 วินาที)';
+  const r=await api('/api/mongo-uri',{mongoUri:uri});
+  if(r?.ok){
+    el.style.color='var(--grn)';
+    el.textContent='✅ MongoDB เชื่อมต่อสำเร็จ! DB: '+(r.dbName||'himangkorn');
+    document.getElementById('c-mongo').value='';
+    toast('✅ MongoDB OK'); loadMongoStatus();
+  } else {
+    el.style.color='var(--red)';el.textContent='❌ '+(r?.error||'เชื่อมต่อไม่ได้');
+    toast('❌ MongoDB error','e');
+  }
+}
+
+async function importGroup(){
+  const gid=document.getElementById('import-gid')?.value.trim()||'';
+  const el=document.getElementById('import-result');
+  el.style.display='block';el.style.color='var(--muted)';el.textContent='⏳ กำลังดึงสมาชิก...';
+  const r=await api('/api/import-group',{groupId:gid});
+  if(r?.ok){
+    el.style.color='var(--grn)';
+    el.textContent=\`✅ Import \${r.total} คน | ใหม่ \${r.added} | มีแล้ว \${r.existed}\`;
+    toast('✅ Import '+r.added+' คนใหม่'); load();
+  } else {
+    el.style.color='var(--red)';el.textContent='❌ '+(r?.error||'ไม่สำเร็จ');
+    toast('❌ Import ไม่สำเร็จ','e');
+  }
+}
+
+async function resetData(what){
+  const msg={all:'ล้างข้อมูลทั้งหมด?',bets:'ล้างรายการแทงทั้งหมด?',logs:'ล้าง Event Log?',slips:'ล้างประวัติสลิป?'};
+  if(!confirm(msg[what]||'ล้างข้อมูล?'))return;
+  const r=await api('/api/reset',{what});if(r.ok){toast('✅ ล้างข้อมูลแล้ว');load();}
+}
+
+function cpWh(){navigator.clipboard.writeText(window.location.origin+'/webhook');toast('✅ คัดลอก Webhook URL แล้ว');}
+function cpCode(btn){navigator.clipboard.writeText(btn.parentElement.innerText.replace('copy','').trim());toast('✅ คัดลอกแล้ว');}
+function betTab(el,f){document.querySelectorAll('.tab-bar .tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');betFilter=f;renderBets();}
+
+let curP='dash';
+function go(id,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
+  const page = document.getElementById('p-'+id);
+  if(!page){ console.warn('Page not found: p-'+id); return; }
+  page.classList.add('on');
+  if(el)el.classList.add('on');
+  curP=id;
+  if(id==='setup'){loadCredStatus();loadMongoStatus();}
+  if(id==='users'){loadUsers();}
+  if(id==='images'){renderImages();}
+}
+
+function toast(msg,t){
+  const el=document.getElementById('toast');
+  document.getElementById('tic').textContent=t==='e'?'❌':'✅';
+  document.getElementById('tmsg').textContent=msg;
+  el.classList.add('on');clearTimeout(toastT);
+  toastT=setTimeout(()=>el.classList.remove('on'),2800);
+}
+
+
+// ─── IMAGE MANAGEMENT JS ───────────────────────────────────────
+let imgBase64 = null, imgContentType = 'image/jpeg';
+
+function previewImg(input) {
+  const file = input.files[0]; if (!file) return;
+  imgContentType = file.type || 'image/jpeg';
+  const reader = new FileReader();
+  reader.onload = e => {
+    const data = e.target.result;
+    imgBase64 = data.split(',')[1];
+    document.getElementById('img-preview').style.display = 'block';
+    document.getElementById('img-preview-el').src = data;
+    if (!document.getElementById('img-name').value) {
+      document.getElementById('img-name').value = file.name.replace(/\.[^.]+$/, '');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function uploadImage() {
+  const name = document.getElementById('img-name').value.trim();
+  const cat  = document.getElementById('img-cat').value;
+  const tag  = document.getElementById('img-tag').value.trim();
+  const el   = document.getElementById('img-upload-result');
+  if (!name) { toast('❌ ใส่ชื่อรูปก่อน','e'); return; }
+  if (!imgBase64) { toast('❌ เลือกรูปก่อน','e'); return; }
+  el.style.color = 'var(--muted)'; el.textContent = '⏳ กำลังอัพโหลด...';
+  const r = await api('/api/images', { name, category: cat, tag, data: imgBase64, contentType: imgContentType });
+  if (r.ok) {
+    el.style.color = 'var(--grn)'; el.textContent = '✅ อัพโหลดสำเร็จ ID: ' + r.id;
+    toast('✅ อัพโหลดรูปแล้ว');
+    document.getElementById('img-name').value = '';
+    document.getElementById('img-tag').value = '';
+    document.getElementById('img-preview').style.display = 'none';
+    imgBase64 = null;
+    load();
+  } else {
+    el.style.color = 'var(--red)'; el.textContent = '❌ ' + (r.error || 'ไม่สำเร็จ');
+    toast('❌ อัพโหลดไม่สำเร็จ', 'e');
+  }
+}
+
+function renderImages() {
+  const cat = document.getElementById('img-filter-cat')?.value || '';
+  const imgs = (D.imagesMeta || []).filter(i => !cat || i.category === cat);
+  const gallery = document.getElementById('img-gallery');
+  if (!gallery) return;
+
+  // update stats
+  const all = D.imagesMeta || [];
+  const setEl = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+  setEl('ik-total', all.length);
+  setEl('ik-announce', all.filter(i=>i.category==='announce').length);
+  setEl('ik-payout', all.filter(i=>i.category==='payout').length);
+  setEl('ik-rules', all.filter(i=>i.category==='rules').length);
+  const nbImg = document.getElementById('nb-images');
+  if (nbImg) nbImg.textContent = all.length;
+
+  // update send select
+  const sel = document.getElementById('send-img-id');
+  if (sel) {
+    const curVal = sel.value;
+    sel.innerHTML = '<option value="">-- เลือกรูป --</option>' +
+      all.map(i => '<option value="'+i.id+'" '+(i.id===curVal?'selected':'')+'>'+catIcon(i.category)+' '+i.name+'</option>').join('');
+  }
+
+  const catLabel = { announce:'📢 ประกาศ', payout:'💰 อัตราจ่าย', rules:'📋 กติกา', score:'📊 สกอร์', promo:'🎁 โปรโม', general:'📁 ทั่วไป' };
+  if (!imgs.length) {
+    gallery.innerHTML = '<div style="color:var(--muted);text-align:center;padding:24px;grid-column:1/-1">ยังไม่มีรูป — อัพโหลดจากด้านซ้าย</div>';
+    return;
+  }
+  gallery.innerHTML = imgs.map(function(img) {
+    return '<div style="background:var(--bg3);border:1px solid var(--bdr2);border-radius:8px;overflow:hidden;position:relative">' +
+      '<div style="background:var(--bg4);height:120px;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer" onclick="previewFullImg(\'' + img.id + '\')">' +
+        '<img src="/api/images/' + img.id + '/view?token=' + TK + '" style="max-width:100%;max-height:120px;object-fit:cover" onerror="this.style.display=\'none\'" loading="lazy">' +
+        '<span style="position:absolute;top:4px;left:4px;font-size:9px;background:rgba(0,0,0,.6);padding:2px 6px;border-radius:4px;color:var(--muted)">' + (catLabel[img.category]||img.category) + '</span>' +
+      '</div>' +
+      '<div style="padding:8px">' +
+        '<div style="font-size:11px;font-weight:600;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px">' + img.name + '</div>' +
+        (img.tag ? '<div style="font-size:10px;color:var(--muted);margin-bottom:6px">' + img.tag + '</div>' : '') +
+        '<div style="display:flex;gap:4px;flex-wrap:wrap">' +
+          '<button class="tbtn g" onclick="quickSendImg(\'' + img.id + '\')" style="flex:1;font-size:10px;padding:3px 6px">📤 ส่ง</button>' +
+          '<button class="tbtn r" onclick="deleteImg(\'' + img.id + '\')" style="font-size:10px;padding:3px 6px">🗑</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function catIcon(cat) {
+  return {announce:'📢',payout:'💰',rules:'📋',score:'📊',promo:'🎁',general:'📁'}[cat]||'📁';
+}
+
+function quickSendImg(id) {
+  document.getElementById('send-img-id').value = id;
+  onSendImgChange();
+  document.getElementById('send-img-gid').value = D.defaultGroupId || '';
+  document.getElementById('send-base-url').value = D.settings?.serverBaseUrl || '';
+  go('images');
+  document.getElementById('send-img-gid').focus();
+  toast('✅ เลือกรูปแล้ว ใส่ Group ID แล้วกดส่ง');
+}
+
+function onSendImgChange() {
+  const id = document.getElementById('send-img-id')?.value;
+  const previewEl = document.getElementById('send-img-preview');
+  const imgEl = document.getElementById('send-img-el');
+  if (id && previewEl && imgEl) {
+    imgEl.src = '/api/images/' + id + '/view?token=' + TK;
+    previewEl.style.display = 'block';
+  } else if (previewEl) { previewEl.style.display = 'none'; }
+}
+
+async function sendImageToLine() {
+  const imgId   = document.getElementById('send-img-id').value;
+  const gid     = document.getElementById('send-img-gid').value.trim();
+  const caption = document.getElementById('send-img-caption').value.trim();
+  const baseUrl = document.getElementById('send-base-url').value.trim();
+  const el      = document.getElementById('send-img-result');
+  if (!imgId) { toast('❌ เลือกรูปก่อน','e'); return; }
+  if (!gid)   { toast('❌ ใส่ Group ID','e'); return; }
+  el.style.color = 'var(--muted)'; el.textContent = '⏳ กำลังส่ง...';
+  const r = await api('/api/images/' + imgId + '/send', { groupId: gid, caption, baseUrl });
+  if (r.ok) {
+    if (r.sent) {
+      el.style.color = 'var(--grn)'; el.textContent = '✅ ส่งรูปไป LINE สำเร็จ';
+      toast('✅ ส่งรูปแล้ว');
+    } else {
+      el.style.color = 'var(--gold)';
+      el.textContent = '⚠️ ส่งข้อความแทน (ต้องตั้ง Base URL ที่เป็น HTTPS สาธารณะ)';
+      toast('⚠️ ส่งข้อความแทนรูป');
+    }
+  } else {
+    el.style.color = 'var(--red)'; el.textContent = '❌ ' + (r.error || 'ไม่สำเร็จ');
+    toast('❌ ส่งไม่สำเร็จ','e');
+  }
+}
+
+async function deleteImg(id) {
+  if (!confirm('ลบรูปนี้?')) return;
+  const token = TK || localStorage.getItem('bd_tk') || '';
+  const resp = await fetch('/api/images/' + id, { method:'DELETE', headers:{'x-admin-token':token,'Content-Type':'application/json'} });
+  const rd = await resp.json();
+  if (rd.ok) { toast('✅ ลบรูปแล้ว'); load(); }
+  else toast('❌ ' + (rd.error||'ไม่สำเร็จ'),'e');
+}
+
+function previewFullImg(id) {
+  const w = window.open('', '_blank');
+  w.document.write('<body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="/api/images/' + id + '/view?token=' + TK + '" style="max-width:100%;max-height:100vh"></body>');
+}
+
+// patch load to call renderImages
+const _origLoad = load;
+// We call renderImages inside load() by patching D rendering
+
+async function quickScore(){
+  const gid=getGid();
+  if(!gid){toast('❌ ใส่ Group ID ก่อน','e');return;}
+  const r=await api('/api/score',{groupId:gid,count:10});
+  if(r.ok){toast('✅ ส่งสกอร์ย้อนหลังแล้ว');}
+  else toast('❌ ส่งไม่สำเร็จ','e');
+}
+
+let _pendingDice = null;
+function showConfirmBox(r){
+  _pendingDice = r;
+  const DE=['','⚀','⚁','⚂','⚃','⚄','⚅'];
+  const sum=r.d1+r.d2+r.d3, triple=r.d1===r.d2&&r.d2===r.d3, hi=sum>=11;
+  const lbl=triple?'ต๊อก!':hi?'สูง':'ต่ำ';
+  const preview=
+    'ตรวจสอบผลที่ออก\n' +
+    '────────────────────\n' +
+    'เปิดที่ ' + r.round + '\n' +
+    'สรุปผลไฮโล\n' +
+    (DE[r.d1]||r.d1)+' '+(DE[r.d2]||r.d2)+' '+(DE[r.d3]||r.d3)+'\n' +
+    r.d1+' + '+r.d2+' + '+r.d3+' = '+sum+' ('+lbl+')';
+  document.getElementById('r-confirm-preview').innerText=preview;
+  document.getElementById('r-confirm-box').style.display='block';
+  toast('⏳ รอยืนยันผล — กด Y หรือ N');
+}
+
+async function confirmResult(){
+  if(!_pendingDice){toast('❌ ไม่มีผลรอยืนยัน','e');return;}
+  const baseUrl = document.getElementById('r-baseurl')?.value?.trim() || 
+                  document.getElementById('s-baseurl')?.value?.trim() || '';
+  const r = await api('/api/roll-gif',{
+    d1:_pendingDice.d1, d2:_pendingDice.d2, d3:_pendingDice.d3,
+    groupId:getGid(), confirmed:true, baseUrl
+  });
+  _pendingDice=null;
+  document.getElementById('r-confirm-box').style.display='none';
+  document.getElementById('r-gif-box').style.display='none';
+  showRollResult(r); load();
+}
+
+
+// ── DICE GIF PREVIEW ───────────────────────────────────────────
+function showDiceGifPreview(d1, d2, d3) {
+  const box = document.getElementById('r-gif-box');
+  const img = document.getElementById('r-gif-preview');
+  if (!box || !img) return;
+  // Load from server with cache-busting
+  img.src = '/api/gen-gif/' + d1 + '/' + d2 + '/' + d3 + '?t=' + Date.now();
+  img.onload = () => { box.style.display = 'block'; };
+  img.onerror = () => { box.style.display = 'none'; };
+}
+
+// Also populate r-baseurl from settings when page loads
+function syncBaseUrl() {
+  const rb = document.getElementById('r-baseurl');
+  const sb = document.getElementById('s-baseurl');
+  if (rb && sb && !rb.value && sb.value) rb.value = sb.value;
+}
+
+async function cancelResult(){
+  _pendingDice=null;
+  document.getElementById('r-confirm-box').style.display='none';
+  toast('🔄 ยกเลิกผลแล้ว');
+  const r=await api('/api/open',{groupId:getGid()});
+  if(r.ok) load();
+}
+
+// ─── COMMAND TEST JS ──────────────────────────────────────────
+async function sendCmd(cmd) {
+  const gid = document.getElementById('cmd-gid')?.value.trim() || getGid() || D.defaultGroupId;
+  if (!gid) { toast('❌ ใส่ Group ID ก่อน','e'); return; }
+  const el = document.getElementById('cmd-result');
+  if (el) { el.style.color='var(--muted)'; el.textContent='⏳ กำลังส่ง "'+cmd+'"...'; }
+  const r = await api('/api/push', { to: gid, message: cmd });
+  if (r.ok) {
+    if (el) { el.style.color='var(--grn)'; el.textContent='✅ ส่ง "'+cmd+'" ไปกลุ่มแล้ว'; }
+    toast('✅ ส่ง "'+cmd+'" แล้ว');
+  } else {
+    if (el) { el.style.color='var(--red)'; el.textContent='❌ '+(r.error||'ไม่สำเร็จ'); }
+    toast('❌ ส่งไม่สำเร็จ','e');
+  }
+}
+
+async function sendCustomCmd() {
+  const cmd = document.getElementById('cmd-custom')?.value.trim();
+  if (!cmd) { toast('❌ พิมพ์คำสั่งก่อน','e'); return; }
+  await sendCmd(cmd);
+  document.getElementById('cmd-custom').value = '';
+}
+
+// ── USER MANAGEMENT ───────────────────────────────────────────
+let currentUsers = [];
+
+async function loadUsers() {
+  const r = await api('/api/users');
+  if (!r || !r.ok) { toast('❌ โหลด users ไม่ได้', 'e'); return; }
+  currentUsers = r.users || [];
+  renderUsers();
+  // populate my profile
+  if (r.me) {
+    const se = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v||'—'; };
+    se('my-name', r.me.name);
+    se('my-username', r.me.username);
+    se('my-role', {admin:'🔴 Admin',mod:'🟡 Moderator',viewer:'🔵 Viewer'}[r.me.role]||r.me.role);
+    se('my-last', r.me.lastLogin ? new Date(r.me.lastLogin).toLocaleString('th') : 'ยังไม่เคย');
+  }
+}
+
+function renderUsers() {
+  const el = document.getElementById('users-list');
+  if (!el) return;
+  if (!currentUsers.length) {
+    el.innerHTML = '<div style="color:var(--muted);text-align:center;padding:16px">ยังไม่มีผู้ใช้</div>';
+    return;
+  }
+  const roleLabel = {admin:'Admin',mod:'Moderator',viewer:'Viewer'};
+  const roleClass = {admin:'role-admin',mod:'role-mod',viewer:'role-viewer'};
+  el.innerHTML = currentUsers.map(u => 
+    '<div class="user-card">' +
+      '<div class="user-av">' + (u.name||'?')[0].toUpperCase() + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:12px;font-weight:600;color:var(--txt)">' + u.name + '</div>' +
+        '<div style="font-size:10px;color:var(--muted)">@' + u.username + '</div>' +
+      '</div>' +
+      '<span class="role-badge ' + (roleClass[u.role]||'role-viewer') + '">' + (roleLabel[u.role]||u.role) + '</span>' +
+      '<button class="tbtn" onclick="editUser(' + "'" + u.id + "'" + ')" style="font-size:10px;padding:3px 8px">✏️</button>' +
+    '</div>'
+  ).join('');
+}
+
+function editUser(id) {
+  const u = currentUsers.find(u => u.id === id);
+  if (!u) return;
+  document.getElementById('eu-uid').value = u.id;
+  document.getElementById('eu-title').textContent = u.name + ' (@' + u.username + ')';
+  document.getElementById('eu-name').value = u.name || '';
+  document.getElementById('eu-role').value = u.role || 'viewer';
+  document.getElementById('eu-pw').value = '';
+  document.getElementById('eu-result').textContent = '';
+  document.getElementById('edit-user-box').style.display = 'block';
+  document.getElementById('edit-user-box').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function createUser() {
+  const name = document.getElementById('nu-name')?.value.trim();
+  const username = document.getElementById('nu-user')?.value.trim();
+  const password = document.getElementById('nu-pw')?.value;
+  const role = document.getElementById('nu-role')?.value;
+  const el = document.getElementById('nu-result');
+  if (!name || !username || !password) { toast('❌ กรอกข้อมูลให้ครบ','e'); return; }
+  el.style.color = 'var(--muted)'; el.textContent = '⏳ กำลังสร้าง...';
+  const r = await api('/api/users', { action:'create', name, username, password, role });
+  if (r.ok) {
+    el.style.color = 'var(--grn)'; el.textContent = '✅ สร้างผู้ใช้ ' + name + ' แล้ว';
+    document.getElementById('nu-name').value = '';
+    document.getElementById('nu-user').value = '';
+    document.getElementById('nu-pw').value = '';
+    toast('✅ สร้างผู้ใช้แล้ว'); loadUsers();
+  } else {
+    el.style.color = 'var(--red)'; el.textContent = '❌ ' + (r.error || 'ไม่สำเร็จ');
+    toast('❌ ' + (r.error||'ไม่สำเร็จ'), 'e');
+  }
+}
+
+async function saveUser() {
+  const id = document.getElementById('eu-uid')?.value;
+  const name = document.getElementById('eu-name')?.value.trim();
+  const role = document.getElementById('eu-role')?.value;
+  const password = document.getElementById('eu-pw')?.value;
+  const el = document.getElementById('eu-result');
+  el.style.color = 'var(--muted)'; el.textContent = '⏳ กำลังบันทึก...';
+  const r = await api('/api/users', { action:'update', id, name, role, password: password||undefined });
+  if (r.ok) {
+    el.style.color = 'var(--grn)'; el.textContent = '✅ บันทึกแล้ว';
+    toast('✅ แก้ไขผู้ใช้แล้ว'); loadUsers();
+    setTimeout(() => document.getElementById('edit-user-box').style.display = 'none', 800);
+  } else {
+    el.style.color = 'var(--red)'; el.textContent = '❌ ' + (r.error||'ไม่สำเร็จ');
+  }
+}
+
+async function deleteUser() {
+  const id = document.getElementById('eu-uid')?.value;
+  const title = document.getElementById('eu-title')?.textContent;
+  if (!confirm('ลบผู้ใช้ ' + title + ' จริงหรือไม่?')) return;
+  const r = await api('/api/users', { action:'delete', id });
+  if (r.ok) {
+    toast('✅ ลบผู้ใช้แล้ว'); loadUsers();
+    document.getElementById('edit-user-box').style.display = 'none';
+  } else {
+    toast('❌ ' + (r.error||'ลบไม่สำเร็จ'), 'e');
+  }
+}
+
+async function changeMyPw() {
+  const np = document.getElementById('my-newpw')?.value;
+  const cp = document.getElementById('my-confirmpw')?.value;
+  if (!np) { toast('❌ ใส่รหัสผ่านใหม่','e'); return; }
+  if (np !== cp) { toast('❌ รหัสผ่านไม่ตรงกัน','e'); return; }
+  const r = await api('/api/users', { action:'changepw', password: np });
+  if (r.ok) {
+    toast('✅ เปลี่ยนรหัสผ่านแล้ว');
+    document.getElementById('my-newpw').value = '';
+    document.getElementById('my-confirmpw').value = '';
+  } else {
+    toast('❌ ' + (r.error||'ไม่สำเร็จ'), 'e');
+  }
+}
+
+// Load users when visiting that page
+const _origGo = go;
+
+load();
+loadCredStatus();
+loadMongoStatus();
+setInterval(load,8000);
+</script></body></html>
