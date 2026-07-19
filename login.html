@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>มารวย — เข้าสู่ระบบ</title>
+<style>
+:root {
+  --bg:#080b14; --bg2:#0d1120; --bg3:#131827; --bg4:#1a2035;
+  --bdr:rgba(255,255,255,.06); --bdr2:rgba(255,255,255,.10);
+  --txt:#e8ecf4; --muted:#5a6480;
+  --gold:#f0a500; --gold2:#ffc84a; --glow:rgba(240,165,0,.18);
+  --grn:#34d399; --red:#f87171; --cyan:#22d3ee;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Inter', 'Noto Sans Thai', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--txt);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-image:
+    radial-gradient(ellipse at 20% 20%, rgba(240,165,0,.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(34,211,238,.04) 0%, transparent 50%);
+}
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--bdr2);
+  border-radius: 20px;
+  padding: 40px 36px;
+  width: 360px;
+  box-shadow: 0 32px 80px rgba(0,0,0,.6), 0 0 0 1px var(--bdr);
+}
+.logo-wrap { text-align: center; margin-bottom: 30px; }
+.logo-icon { font-size: 40px; margin-bottom: 8px; }
+.logo-name {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--gold);
+  letter-spacing: -.5px;
+  text-shadow: 0 0 24px var(--glow);
+}
+.logo-sub {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-top: 3px;
+  font-weight: 600;
+}
+.field { margin-bottom: 16px; }
+.field label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  margin-bottom: 6px;
+}
+.field input {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--bdr2);
+  color: var(--txt);
+  padding: 11px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color .15s, box-shadow .15s;
+}
+.field input:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(240,165,0,.12);
+}
+.field input::placeholder { color: var(--muted); }
+.btn-login {
+  width: 100%;
+  padding: 13px;
+  background: var(--gold);
+  color: #000;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: all .15s;
+  letter-spacing: .2px;
+  box-shadow: 0 0 20px var(--glow);
+  font-family: inherit;
+}
+.btn-login:hover { background: var(--gold2); transform: translateY(-1px); box-shadow: 0 0 30px rgba(240,165,0,.3); }
+.btn-login:active { transform: none; }
+.err-box {
+  color: var(--red);
+  font-size: 12px;
+  text-align: center;
+  margin-top: 12px;
+  min-height: 20px;
+  font-weight: 600;
+}
+.hint {
+  text-align: center;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 20px;
+  line-height: 1.9;
+  padding-top: 16px;
+  border-top: 1px solid var(--bdr);
+}
+.hint span { color: rgba(240,165,0,.7); }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="page">
+  <div class="card">
+
+    <div class="logo-area">
+      <div class="logo-icon">🍀</div>
+      <div class="logo-name">มารวย</div>
+      <div class="logo-sub">Admin Dashboard</div>
+    </div>
+
+    <!-- Trick browser autofill away from real fields -->
+    <input type="text"     name="b_user" style="display:none" tabindex="-1">
+    <input type="password" name="b_pass" style="display:none" tabindex="-1">
+
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="inp-user" name="maruay-user" placeholder="username"
+             autocomplete="off"
+             spellcheck="false" autocorrect="off" autocapitalize="none"
+             onkeydown="if(event.key==='Enter')document.getElementById('inp-pw').focus()">
+    </div>
+
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="inp-pw" name="maruay-pw" placeholder="••••••••"
+             autocomplete="new-password"
+             onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+
+    <button class="btn-login" id="btn-login" onclick="doLogin()">
+      🔑 เข้าสู่ระบบ
+    </button>
+
+    <div class="err-box" id="err-box"></div>
+
+    <div class="hint">
+      SuperAdmin: <span>superadmin</span> / รหัสผ่านจาก <span>ADMIN_PASSWORD</span>
+    </div>
+  </div>
+
+  <div class="ver">มารวย v5 AI · Powered by Anthropic Claude</div>
+</div>
+
+<script>
+  // If already has valid token → redirect to dashboard immediately
+  const savedToken = (()=>{
+    const url = new URLSearchParams(window.location.search).get('token');
+    if (url) { localStorage.setItem('bd_tk', url); return url; }
+    return localStorage.getItem('bd_tk') || '';
+  })();
+
+  if (savedToken) {
+    // Verify token
+    fetch('/api/me', { headers: { 'x-admin-token': savedToken } })
+      .then(r => {
+        if (r.ok) {
+          window.location.replace('/?token=' + encodeURIComponent(savedToken));
+        } else {
+          localStorage.removeItem('bd_tk');
+        }
+      })
+      .catch(() => {});
+  }
+
+  // Clear any autofilled wrong values on page load
+  (function clearAutofill() {
+    setTimeout(() => {
+      const u = document.getElementById('inp-user');
+      const p = document.getElementById('inp-pw');
+      if (u) {
+        // If browser autofilled something that looks like a URL or long string, clear it
+        const val = u.value || '';
+        if (val.includes('://') || val.includes('@') || val.length > 40) {
+          u.value = '';
+        }
+      }
+      if (u && !u.value) u.focus();
+    }, 150);
+  })();
+
+  async function doLogin() {
+    const username = document.getElementById('inp-user').value.trim();
+    const password = document.getElementById('inp-pw').value;
+    const errEl    = document.getElementById('err-box');
+    const btn      = document.getElementById('btn-login');
+
+    errEl.textContent = '';
+
+    if (!username) {
+      errEl.textContent = '❌ กรุณาใส่ Username';
+      document.getElementById('inp-user').focus();
+      return;
+    }
+    if (!password) {
+      errEl.textContent = '❌ กรุณาใส่ Password';
+      document.getElementById('inp-pw').focus();
+      return;
+    }
+
+    btn.innerHTML = '<span class="spinner"></span> กำลังเข้าสู่ระบบ...';
+    btn.disabled  = true;
+
+    try {
+      const resp = await fetch('/api/login', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ username, password }),
+      });
+
+      const data = await resp.json();
+
+      if (data.ok) {
+        localStorage.setItem('bd_tk', data.token);
+        // Brief success flash
+        btn.innerHTML = '✅ เข้าสู่ระบบสำเร็จ';
+        btn.style.background = 'linear-gradient(135deg, #2d8a50, #4ab870)';
+        setTimeout(() => {
+          window.location.replace('/?token=' + encodeURIComponent(data.token));
+        }, 300);
+      } else {
+        errEl.textContent = '❌ ' + (data.error || 'username หรือ password ไม่ถูกต้อง');
+        document.getElementById('inp-pw').value = '';
+        document.getElementById('inp-pw').focus();
+        btn.innerHTML = '🔑 เข้าสู่ระบบ';
+        btn.disabled  = false;
+        // Shake animation on error
+        const card = document.querySelector('.card');
+        card.style.animation = 'none';
+        card.style.transform = 'translateX(8px)';
+        setTimeout(() => { card.style.transform = 'translateX(-6px)'; }, 60);
+        setTimeout(() => { card.style.transform = 'translateX(4px)'; }, 120);
+        setTimeout(() => { card.style.transform = 'translateX(0)'; card.style.transition='transform .15s'; }, 180);
+      }
+    } catch (e) {
+      errEl.textContent = '❌ เชื่อมต่อ server ไม่ได้';
+      btn.innerHTML = '🔑 เข้าสู่ระบบ';
+      btn.disabled  = false;
+    }
+  }
+</script>
+</body>
+</html>
